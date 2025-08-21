@@ -1,19 +1,7 @@
-import { Hero } from "@/components/Hero";
-import { CoreConcept } from "@/components/CoreConcept";
-import { Features } from "@/components/Features";
-import { OwaspSection } from "@/components/OwaspSection";
-import { Conclusion } from "@/components/Conclusion";
+import { CurlTester } from "@/components/CurlTester";
 
 const Index = () => {
-  return (
-    <div className="min-h-screen bg-background">
-      <Hero />
-      <CoreConcept />
-      <Features />
-      <OwaspSection />
-      <Conclusion />
-    </div>
-  );
+  return <CurlTester />;
 };
 
 export default Index;
