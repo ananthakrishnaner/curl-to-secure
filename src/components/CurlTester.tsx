@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy } from "lucide-react";
+import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 
 interface ParsedCurl {
@@ -21,13 +23,29 @@ interface TestResult {
   description: string;
   details: string[];
   severity: 'Critical' | 'High' | 'Medium' | 'Low';
+  request: {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body?: any;
+  };
+  response: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: any;
+    time: number;
+  };
 }
 
 export const CurlTester = () => {
   const [curlCommand, setCurlCommand] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [currentTest, setCurrentTest] = useState("");
   const [parsedCurl, setParsedCurl] = useState<ParsedCurl | null>(null);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
+  const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   const exampleCurl = `curl -X POST https://api.example.com/users \\
@@ -62,11 +80,52 @@ export const CurlTester = () => {
     }
   };
 
+  const generateMockResponse = (testType: string, status: 'passed' | 'failed' | 'warning') => {
+    const baseTime = Math.floor(Math.random() * 300) + 50;
+    
+    if (status === 'failed') {
+      return {
+        status: 200,
+        statusText: 'OK',
+        headers: { 'Content-Type': 'application/json', 'X-Response-Time': `${baseTime}ms` },
+        body: { 
+          success: true, 
+          data: { id: 999, name: 'Unauthorized User', role: 'admin', isAdmin: true },
+          message: 'Vulnerable: Access granted to unauthorized resource'
+        },
+        time: baseTime
+      };
+    } else if (status === 'warning') {
+      return {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { 'Content-Type': 'application/json', 'X-Rate-Limit': '100', 'Retry-After': '60' },
+        body: { error: 'Rate limit exceeded', retryAfter: 60 },
+        time: baseTime
+      };
+    } else {
+      return {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'Content-Type': 'application/json', 'X-Security-Check': 'passed' },
+        body: { error: 'Access denied', message: 'Proper authorization required' },
+        time: baseTime
+      };
+    }
+  };
+
   const generateSecurityTests = (parsed: ParsedCurl): TestResult[] => {
     const results: TestResult[] = [];
 
     // BOLA Testing
     if (parsed.body?.userId || parsed.endpoint.includes('/users/')) {
+      const testRequest = {
+        method: parsed.method,
+        url: parsed.url.replace(/\/\d+/, '/999'), // Replace user ID with 999
+        headers: parsed.headers,
+        body: parsed.body ? { ...parsed.body, userId: 999 } : undefined
+      };
+
       results.push({
         id: 'bola',
         name: 'Broken Object Level Authorization (BOLA)',
@@ -77,12 +136,21 @@ export const CurlTester = () => {
           'Testing with incremented/decremented IDs',
           'Checking access to other user objects'
         ],
-        severity: 'Critical'
+        severity: 'Critical',
+        request: testRequest,
+        response: generateMockResponse('bola', 'failed')
       });
     }
 
     // Authentication Testing
     if (parsed.headers.Authorization) {
+      const testRequest = {
+        method: parsed.method,
+        url: parsed.url,
+        headers: { ...parsed.headers, Authorization: '' }, // Remove auth header
+        body: parsed.body
+      };
+
       results.push({
         id: 'auth',
         name: 'Authentication Testing',
@@ -93,9 +161,18 @@ export const CurlTester = () => {
           'Testing with malformed tokens',
           'Checking token expiration handling'
         ],
-        severity: 'High'
+        severity: 'High',
+        request: testRequest,
+        response: generateMockResponse('auth', 'warning')
       });
     } else {
+      const testRequest = {
+        method: parsed.method,
+        url: parsed.url,
+        headers: parsed.headers,
+        body: parsed.body
+      };
+
       results.push({
         id: 'auth',
         name: 'Authentication Testing',
@@ -106,12 +183,21 @@ export const CurlTester = () => {
           'Testing unauthorized access',
           'Potential security risk'
         ],
-        severity: 'Critical'
+        severity: 'Critical',
+        request: testRequest,
+        response: generateMockResponse('auth', 'failed')
       });
     }
 
     // BOPLA Testing
     if (parsed.body && typeof parsed.body === 'object') {
+      const testRequest = {
+        method: parsed.method,
+        url: parsed.url,
+        headers: parsed.headers,
+        body: { ...parsed.body, isAdmin: true, role: 'admin' } // Add privileged fields
+      };
+
       results.push({
         id: 'bopla',
         name: 'Broken Object Property Level Authorization',
@@ -122,11 +208,20 @@ export const CurlTester = () => {
           'Testing role elevation: {"role": "admin"}',
           'Checking property-level access controls'
         ],
-        severity: 'High'
+        severity: 'High',
+        request: testRequest,
+        response: generateMockResponse('bopla', 'warning')
       });
     }
 
     // Rate Limiting
+    const testRequest = {
+      method: parsed.method,
+      url: parsed.url,
+      headers: parsed.headers,
+      body: parsed.body
+    };
+
     results.push({
       id: 'rate_limit',
       name: 'Rate Limiting Testing',
@@ -137,11 +232,20 @@ export const CurlTester = () => {
         'Testing large payload handling',
         'Checking timeout mechanisms'
       ],
-      severity: 'Medium'
+      severity: 'Medium',
+      request: testRequest,
+      response: generateMockResponse('rate_limit', 'warning')
     });
 
     // SSRF Testing
     if (parsed.body && JSON.stringify(parsed.body).includes('http')) {
+      const testRequest = {
+        method: parsed.method,
+        url: parsed.url,
+        headers: parsed.headers,
+        body: { ...parsed.body, callbackUrl: 'http://169.254.169.254/metadata' }
+      };
+
       results.push({
         id: 'ssrf',
         name: 'Server Side Request Forgery (SSRF)',
@@ -152,11 +256,20 @@ export const CurlTester = () => {
           'Injecting metadata endpoints',
           'Checking URL validation'
         ],
-        severity: 'High'
+        severity: 'High',
+        request: testRequest,
+        response: generateMockResponse('ssrf', 'failed')
       });
     }
 
-    // Add some passing tests
+    // Security Headers Check
+    const headersTestRequest = {
+      method: parsed.method,
+      url: parsed.url,
+      headers: parsed.headers,
+      body: parsed.body
+    };
+
     results.push({
       id: 'headers',
       name: 'Security Headers Check',
@@ -167,13 +280,15 @@ export const CurlTester = () => {
         'JSON content properly specified',
         'No obvious header injection'
       ],
-      severity: 'Low'
+      severity: 'Low',
+      request: headersTestRequest,
+      response: generateMockResponse('headers', 'passed')
     });
 
     return results;
   };
 
-  const handleAnalyzeCurl = () => {
+  const handleAnalyzeCurl = async () => {
     if (!curlCommand.trim()) {
       toast({
         title: "Missing cURL Command",
@@ -184,32 +299,52 @@ export const CurlTester = () => {
     }
 
     setIsAnalyzing(true);
+    setAnalysisProgress(0);
+    setTestResults([]);
     
-    // Simulate API analysis
-    setTimeout(() => {
-      const parsed = parseCurlCommand(curlCommand);
-      
-      if (!parsed) {
-        toast({
-          title: "Invalid cURL Command",
-          description: "Could not parse the provided cURL command",
-          variant: "destructive"
-        });
-        setIsAnalyzing(false);
-        return;
-      }
-
-      setParsedCurl(parsed);
-      const results = generateSecurityTests(parsed);
-      setTestResults(results);
-      setIsAnalyzing(false);
-      
+    const parsed = parseCurlCommand(curlCommand);
+    
+    if (!parsed) {
       toast({
-        title: "Analysis Complete",
-        description: `Found ${results.filter(r => r.status === 'failed').length} critical issues`,
-        variant: "default"
+        title: "Invalid cURL Command",
+        description: "Could not parse the provided cURL command",
+        variant: "destructive"
       });
-    }, 2000);
+      setIsAnalyzing(false);
+      return;
+    }
+
+    setParsedCurl(parsed);
+    
+    // Simulate progressive testing with realistic delays
+    const tests = generateSecurityTests(parsed);
+    const testSteps = [
+      "Parsing cURL command...",
+      "Extracting endpoint information...",
+      "Testing BOLA vulnerabilities...",
+      "Checking authentication...",
+      "Testing privilege escalation...",
+      "Analyzing rate limiting...",
+      "Scanning for SSRF...",
+      "Validating security headers...",
+      "Generating final report..."
+    ];
+
+    for (let i = 0; i < testSteps.length; i++) {
+      setCurrentTest(testSteps[i]);
+      setAnalysisProgress((i + 1) / testSteps.length * 100);
+      await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 300));
+    }
+    
+    setTestResults(tests);
+    setIsAnalyzing(false);
+    setCurrentTest("");
+    
+    toast({
+      title: "Analysis Complete",
+      description: `Found ${tests.filter(r => r.status === 'failed').length} critical issues`,
+      variant: "default"
+    });
   };
 
   const copyExample = () => {
@@ -239,6 +374,15 @@ export const CurlTester = () => {
     }
   };
 
+  const toggleResultExpansion = (resultId: string) => {
+    const newExpanded = new Set(expandedResults);
+    if (newExpanded.has(resultId)) {
+      newExpanded.delete(resultId);
+    } else {
+      newExpanded.add(resultId);
+    }
+    setExpandedResults(newExpanded);
+  };
   return (
     <div className="min-h-screen bg-background py-8">
       <div className="container max-w-6xl px-4">
@@ -303,6 +447,30 @@ export const CurlTester = () => {
           </CardContent>
         </Card>
 
+        {/* Progress Bar */}
+        {isAnalyzing && (
+          <Card className="bg-gradient-card border-primary/20 mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="w-5 h-5 animate-pulse" />
+                Security Analysis in Progress
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-muted-foreground">{currentTest}</span>
+                  <span className="text-primary font-medium">{Math.round(analysisProgress)}%</span>
+                </div>
+                <Progress value={analysisProgress} className="h-2" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Running comprehensive OWASP API Top 10 security tests...
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Parsed Information */}
         {parsedCurl && (
           <Card className="bg-gradient-card border-primary/20 mb-8">
@@ -343,7 +511,7 @@ export const CurlTester = () => {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
                         {getStatusIcon(result.status)}
-                        <div>
+                        <div className="flex-1">
                           <CardTitle className="text-lg flex items-center gap-3">
                             {result.name}
                             <Badge className={getSeverityColor(result.severity)}>
@@ -353,9 +521,23 @@ export const CurlTester = () => {
                           <p className="text-muted-foreground mt-1">{result.description}</p>
                         </div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleResultExpansion(result.id)}
+                        className="text-primary hover:bg-primary/10"
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View Details
+                        {expandedResults.has(result.id) ? (
+                          <ChevronUp className="w-4 h-4 ml-1" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 ml-1" />
+                        )}
+                      </Button>
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-4">
                     <div>
                       <h4 className="font-semibold mb-2 text-primary">Test Details</h4>
                       <ul className="space-y-1">
@@ -367,6 +549,80 @@ export const CurlTester = () => {
                         ))}
                       </ul>
                     </div>
+
+                    <Collapsible open={expandedResults.has(result.id)}>
+                      <CollapsibleContent className="space-y-4">
+                        <div className="border-t border-primary/20 pt-4">
+                          <div className="grid md:grid-cols-2 gap-6">
+                            {/* Request Details */}
+                            <div>
+                              <h4 className="font-semibold mb-3 text-primary flex items-center gap-2">
+                                <Terminal className="w-4 h-4" />
+                                Test Request
+                              </h4>
+                              <div className="bg-muted/50 rounded-lg p-4 font-mono text-sm">
+                                <div className="mb-2">
+                                  <span className="text-primary font-semibold">{result.request.method}</span> {result.request.url}
+                                </div>
+                                
+                                <div className="mb-3">
+                                  <div className="text-muted-foreground mb-1">Headers:</div>
+                                  {Object.entries(result.request.headers).map(([key, value]) => (
+                                    <div key={key} className="text-xs">
+                                      <span className="text-primary">{key}:</span> {value}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {result.request.body && (
+                                  <div>
+                                    <div className="text-muted-foreground mb-1">Body:</div>
+                                    <div className="text-xs bg-background/50 rounded p-2 overflow-auto">
+                                      {JSON.stringify(result.request.body, null, 2)}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Response Details */}
+                            <div>
+                              <h4 className="font-semibold mb-3 text-primary flex items-center gap-2">
+                                <Shield className="w-4 h-4" />
+                                Test Response
+                              </h4>
+                              <div className="bg-muted/50 rounded-lg p-4 font-mono text-sm">
+                                <div className="mb-2">
+                                  <span className={`font-semibold ${
+                                    result.response.status >= 400 ? 'text-destructive' : 
+                                    result.response.status >= 300 ? 'text-security-yellow' : 'text-primary'
+                                  }`}>
+                                    {result.response.status} {result.response.statusText}
+                                  </span>
+                                  <span className="text-muted-foreground ml-2">({result.response.time}ms)</span>
+                                </div>
+                                
+                                <div className="mb-3">
+                                  <div className="text-muted-foreground mb-1">Headers:</div>
+                                  {Object.entries(result.response.headers).map(([key, value]) => (
+                                    <div key={key} className="text-xs">
+                                      <span className="text-primary">{key}:</span> {value}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div>
+                                  <div className="text-muted-foreground mb-1">Body:</div>
+                                  <div className="text-xs bg-background/50 rounded p-2 overflow-auto">
+                                    {JSON.stringify(result.response.body, null, 2)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </CardContent>
                 </Card>
               ))}
