@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy, Eye, ChevronDown, ChevronUp } from "lucide-react";
+import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy, Eye, ChevronDown, ChevronUp, GripVertical, Move3D } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 
 interface ParsedCurl {
@@ -46,7 +47,18 @@ export const CurlTester = () => {
   const [parsedCurl, setParsedCurl] = useState<ParsedCurl | null>(null);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
+  const [selectedVulnerabilities, setSelectedVulnerabilities] = useState<Set<string>>(new Set(['bola', 'auth', 'bopla', 'rate_limit', 'ssrf', 'headers']));
+  const [draggedItem, setDraggedItem] = useState<TestResult | null>(null);
   const { toast } = useToast();
+
+  const vulnerabilityOptions = [
+    { id: 'bola', name: 'Broken Object Level Authorization (BOLA)', category: 'Authorization' },
+    { id: 'auth', name: 'Authentication Testing', category: 'Authentication' },
+    { id: 'bopla', name: 'Broken Object Property Level Authorization', category: 'Authorization' },
+    { id: 'rate_limit', name: 'Rate Limiting Testing', category: 'Resource Management' },
+    { id: 'ssrf', name: 'Server Side Request Forgery (SSRF)', category: 'Input Validation' },
+    { id: 'headers', name: 'Security Headers Check', category: 'Configuration' }
+  ];
 
   const exampleCurl = `curl -X POST https://api.example.com/users \\
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoxMjM0NTY3ODkwLCJuYW1lIjoiSm9obiBEb2UifQ.Ks7KcdjrlUWKqJmXiWKt1nKaWhLZHzJyWnkhzUa6GwA" \\
@@ -118,7 +130,7 @@ export const CurlTester = () => {
     const results: TestResult[] = [];
 
     // BOLA Testing
-    if (parsed.body?.userId || parsed.endpoint.includes('/users/')) {
+    if (selectedVulnerabilities.has('bola') && (parsed.body?.userId || parsed.endpoint.includes('/users/'))) {
       const testRequest = {
         method: parsed.method,
         url: parsed.url.replace(/\/\d+/, '/999'), // Replace user ID with 999
@@ -143,7 +155,8 @@ export const CurlTester = () => {
     }
 
     // Authentication Testing
-    if (parsed.headers.Authorization) {
+    if (selectedVulnerabilities.has('auth')) {
+      if (parsed.headers.Authorization) {
       const testRequest = {
         method: parsed.method,
         url: parsed.url,
@@ -187,10 +200,11 @@ export const CurlTester = () => {
         request: testRequest,
         response: generateMockResponse('auth', 'failed')
       });
+      }
     }
 
     // BOPLA Testing
-    if (parsed.body && typeof parsed.body === 'object') {
+    if (selectedVulnerabilities.has('bopla') && parsed.body && typeof parsed.body === 'object') {
       const testRequest = {
         method: parsed.method,
         url: parsed.url,
@@ -215,7 +229,8 @@ export const CurlTester = () => {
     }
 
     // Rate Limiting
-    const testRequest = {
+    if (selectedVulnerabilities.has('rate_limit')) {
+      const testRequest = {
       method: parsed.method,
       url: parsed.url,
       headers: parsed.headers,
@@ -235,10 +250,11 @@ export const CurlTester = () => {
       severity: 'Medium',
       request: testRequest,
       response: generateMockResponse('rate_limit', 'warning')
-    });
+      });
+    }
 
     // SSRF Testing
-    if (parsed.body && JSON.stringify(parsed.body).includes('http')) {
+    if (selectedVulnerabilities.has('ssrf') && parsed.body && JSON.stringify(parsed.body).includes('http')) {
       const testRequest = {
         method: parsed.method,
         url: parsed.url,
@@ -263,7 +279,8 @@ export const CurlTester = () => {
     }
 
     // Security Headers Check
-    const headersTestRequest = {
+    if (selectedVulnerabilities.has('headers')) {
+      const headersTestRequest = {
       method: parsed.method,
       url: parsed.url,
       headers: parsed.headers,
@@ -283,7 +300,8 @@ export const CurlTester = () => {
       severity: 'Low',
       request: headersTestRequest,
       response: generateMockResponse('headers', 'passed')
-    });
+      });
+    }
 
     return results;
   };
@@ -383,6 +401,49 @@ export const CurlTester = () => {
     }
     setExpandedResults(newExpanded);
   };
+
+  const handleVulnerabilityToggle = (vulnId: string) => {
+    const newSelected = new Set(selectedVulnerabilities);
+    if (newSelected.has(vulnId)) {
+      newSelected.delete(vulnId);
+    } else {
+      newSelected.add(vulnId);
+    }
+    setSelectedVulnerabilities(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedVulnerabilities.size === vulnerabilityOptions.length) {
+      setSelectedVulnerabilities(new Set());
+    } else {
+      setSelectedVulnerabilities(new Set(vulnerabilityOptions.map(v => v.id)));
+    }
+  };
+
+  const handleDragStart = (result: TestResult) => {
+    setDraggedItem(result);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedItem) {
+      // Show detailed view in a modal or expanded section
+      toast({
+        title: "Test Details",
+        description: `Viewing details for ${draggedItem.name}`,
+      });
+      setExpandedResults(new Set([draggedItem.id]));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   return (
     <div className="min-h-screen bg-background py-8">
       <div className="container max-w-6xl px-4">
@@ -426,10 +487,41 @@ export const CurlTester = () => {
                 Example
               </Button>
             </div>
+
+            {/* Vulnerability Selection */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-primary">Select Vulnerabilities to Test</h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSelectAll}
+                >
+                  {selectedVulnerabilities.size === vulnerabilityOptions.length ? 'Deselect All' : 'Select All'}
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {vulnerabilityOptions.map((vuln) => (
+                  <div key={vuln.id} className="flex items-center space-x-2 p-3 rounded-lg bg-muted/50 border">
+                    <Checkbox
+                      id={vuln.id}
+                      checked={selectedVulnerabilities.has(vuln.id)}
+                      onCheckedChange={() => handleVulnerabilityToggle(vuln.id)}
+                    />
+                    <div className="flex-1">
+                      <label htmlFor={vuln.id} className="text-sm font-medium cursor-pointer">
+                        {vuln.name}
+                      </label>
+                      <p className="text-xs text-muted-foreground">{vuln.category}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
             
             <Button 
               onClick={handleAnalyzeCurl}
-              disabled={isAnalyzing}
+              disabled={isAnalyzing || selectedVulnerabilities.size === 0}
               className="w-full bg-gradient-primary hover:scale-105 transition-all duration-300"
             >
               {isAnalyzing ? (
@@ -503,13 +595,30 @@ export const CurlTester = () => {
         {/* Test Results */}
         {testResults.length > 0 && (
           <div>
-            <h2 className="text-2xl font-bold mb-6">Security Test Results</h2>
-            <div className="grid gap-4">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">Security Test Results</h2>
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Move3D className="w-4 h-4" />
+                Drag test cards to view detailed request/response data
+              </div>
+            </div>
+            <div 
+              className="grid gap-4 min-h-[200px] border-2 border-dashed border-primary/20 rounded-lg p-4"
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+            >
               {testResults.map((result) => (
-                <Card key={result.id} className="bg-gradient-card border-primary/20">
+                <Card 
+                  key={result.id} 
+                  className="bg-gradient-card border-primary/20 cursor-move hover:shadow-lg transition-all duration-200"
+                  draggable
+                  onDragStart={() => handleDragStart(result)}
+                  onDragEnd={handleDragEnd}
+                >
                   <CardHeader>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
+                        <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
                         {getStatusIcon(result.status)}
                         <div className="flex-1">
                           <CardTitle className="text-lg flex items-center gap-3">
