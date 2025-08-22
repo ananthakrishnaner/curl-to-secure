@@ -47,7 +47,7 @@ export const CurlTester = () => {
   const [parsedCurl, setParsedCurl] = useState<ParsedCurl | null>(null);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
-  const [selectedVulnerabilities, setSelectedVulnerabilities] = useState<Set<string>>(new Set(['bola', 'auth', 'bopla', 'rate_limit', 'ssrf', 'headers']));
+  const [selectedVulnerabilities, setSelectedVulnerabilities] = useState<Set<string>>(new Set(['bola', 'auth', 'bopla', 'rate_limit', 'input_validation', 'ssrf', 'headers']));
   const [draggedItem, setDraggedItem] = useState<TestResult | null>(null);
   const { toast } = useToast();
 
@@ -56,7 +56,8 @@ export const CurlTester = () => {
     { id: 'auth', name: 'Authentication Testing', category: 'Authentication' },
     { id: 'bopla', name: 'Broken Object Property Level Authorization', category: 'Authorization' },
     { id: 'rate_limit', name: 'Rate Limiting Testing', category: 'Resource Management' },
-    { id: 'ssrf', name: 'Server Side Request Forgery (SSRF)', category: 'Input Validation' },
+    { id: 'input_validation', name: 'Input Validation Testing', category: 'Input Validation' },
+    { id: 'ssrf', name: 'Server Side Request Forgery (SSRF)', category: 'Network Security' },
     { id: 'headers', name: 'Security Headers Check', category: 'Configuration' }
   ];
 
@@ -92,10 +93,24 @@ export const CurlTester = () => {
     }
   };
 
-  const generateMockResponse = (testType: string, status: 'passed' | 'failed' | 'warning') => {
+  const generateMockResponse = (testType: string, status: 'passed' | 'failed' | 'warning', parameter?: string) => {
     const baseTime = Math.floor(Math.random() * 300) + 50;
     
     if (status === 'failed') {
+      if (testType === 'input_validation') {
+        return {
+          status: 500,
+          statusText: 'Internal Server Error',
+          headers: { 'Content-Type': 'application/json', 'X-Response-Time': `${baseTime}ms` },
+          body: { 
+            error: 'Database error',
+            message: `SQL syntax error near '${parameter}' - Potential SQL injection vulnerability detected`,
+            stack_trace: 'at DatabaseQuery.execute(query.js:45)',
+            vulnerable_parameter: parameter
+          },
+          time: baseTime
+        };
+      }
       return {
         status: 200,
         statusText: 'OK',
@@ -108,6 +123,19 @@ export const CurlTester = () => {
         time: baseTime
       };
     } else if (status === 'warning') {
+      if (testType === 'input_validation') {
+        return {
+          status: 400,
+          statusText: 'Bad Request',
+          headers: { 'Content-Type': 'application/json', 'X-Validation': 'partial' },
+          body: { 
+            error: 'Validation failed', 
+            message: `Parameter '${parameter}' contains invalid characters but request was processed`,
+            sanitized_value: parameter?.replace(/['"<>&]/g, '')
+          },
+          time: baseTime
+        };
+      }
       return {
         status: 429,
         statusText: 'Too Many Requests',
@@ -253,28 +281,173 @@ export const CurlTester = () => {
       });
     }
 
+    // Input Validation Testing
+    if (selectedVulnerabilities.has('input_validation')) {
+      const inputValidationPayloads = [
+        { name: 'SQL Injection', payload: "'; DROP TABLE users; --", description: 'SQL injection attack payload' },
+        { name: 'XSS Attack', payload: '<script>alert("XSS")</script>', description: 'Cross-site scripting payload' },
+        { name: 'Command Injection', payload: '; cat /etc/passwd', description: 'Command injection payload' },
+        { name: 'LDAP Injection', payload: '*)(uid=*))(|(uid=*', description: 'LDAP injection payload' },
+        { name: 'NoSQL Injection', payload: '{"$ne": null}', description: 'NoSQL injection payload' }
+      ];
+
+      // Test URL parameters
+      const urlParams = new URL(parsed.url).searchParams;
+      urlParams.forEach((value, key) => {
+        inputValidationPayloads.forEach(payload => {
+          const testUrl = new URL(parsed.url);
+          testUrl.searchParams.set(key, payload.payload);
+          
+          results.push({
+            id: `input_validation_url_${key}_${payload.name.toLowerCase().replace(/\s+/g, '_')}`,
+            name: `Input Validation - URL Parameter: ${key}`,
+            status: 'failed',
+            description: `Testing ${payload.name} in URL parameter '${key}'`,
+            details: [
+              `Parameter: ${key}`,
+              `Original value: ${value}`,
+              `Test payload: ${payload.payload}`,
+              `Attack type: ${payload.description}`
+            ],
+            severity: 'High',
+            request: {
+              method: parsed.method,
+              url: testUrl.toString(),
+              headers: parsed.headers,
+              body: parsed.body
+            },
+            response: generateMockResponse('input_validation', 'failed', key)
+          });
+        });
+      });
+
+      // Test JSON body parameters
+      if (parsed.body && typeof parsed.body === 'object') {
+        Object.keys(parsed.body).forEach(key => {
+          inputValidationPayloads.forEach(payload => {
+            const testBody = { ...parsed.body };
+            testBody[key] = payload.payload;
+            
+            results.push({
+              id: `input_validation_body_${key}_${payload.name.toLowerCase().replace(/\s+/g, '_')}`,
+              name: `Input Validation - Body Parameter: ${key}`,
+              status: 'failed',
+              description: `Testing ${payload.name} in body parameter '${key}'`,
+              details: [
+                `Parameter: ${key}`,
+                `Original value: ${parsed.body[key]}`,
+                `Test payload: ${payload.payload}`,
+                `Attack type: ${payload.description}`
+              ],
+              severity: 'High',
+              request: {
+                method: parsed.method,
+                url: parsed.url,
+                headers: parsed.headers,
+                body: testBody
+              },
+              response: generateMockResponse('input_validation', 'failed', key)
+            });
+          });
+        });
+      }
+
+      // Test headers for injection
+      ['User-Agent', 'X-Forwarded-For', 'X-Real-IP'].forEach(headerName => {
+        if (parsed.headers[headerName] || headerName === 'User-Agent') {
+          inputValidationPayloads.slice(0, 2).forEach(payload => { // Test only XSS and SQL for headers
+            const testHeaders = { ...parsed.headers };
+            testHeaders[headerName] = payload.payload;
+            
+            results.push({
+              id: `input_validation_header_${headerName.toLowerCase().replace(/-/g, '_')}_${payload.name.toLowerCase().replace(/\s+/g, '_')}`,
+              name: `Input Validation - Header: ${headerName}`,
+              status: 'warning',
+              description: `Testing ${payload.name} in header '${headerName}'`,
+              details: [
+                `Header: ${headerName}`,
+                `Original value: ${parsed.headers[headerName] || 'Not set'}`,
+                `Test payload: ${payload.payload}`,
+                `Attack type: ${payload.description}`
+              ],
+              severity: 'Medium',
+              request: {
+                method: parsed.method,
+                url: parsed.url,
+                headers: testHeaders,
+                body: parsed.body
+              },
+              response: generateMockResponse('input_validation', 'warning', headerName)
+            });
+          });
+        }
+      });
+    }
+
     // SSRF Testing
     if (selectedVulnerabilities.has('ssrf') && parsed.body && JSON.stringify(parsed.body).includes('http')) {
+      const ssrfPayloads = [
+        'http://169.254.169.254/metadata',
+        'http://localhost:80/admin',
+        'file:///etc/passwd',
+        'http://127.0.0.1:22',
+        'ftp://internal.company.com'
+      ];
+
+      // Find URL-like parameters in body
+      Object.keys(parsed.body).forEach(key => {
+        const value = parsed.body[key];
+        if (typeof value === 'string' && (value.includes('http') || key.toLowerCase().includes('url') || key.toLowerCase().includes('callback'))) {
+          ssrfPayloads.forEach((payload, index) => {
+            const testRequest = {
+              method: parsed.method,
+              url: parsed.url,
+              headers: parsed.headers,
+              body: { ...parsed.body, [key]: payload }
+            };
+
+            results.push({
+              id: `ssrf_${key}_${index}`,
+              name: `SSRF Testing - Parameter: ${key}`,
+              status: 'failed',
+              description: `Testing SSRF via '${key}' parameter`,
+              details: [
+                `Parameter: ${key}`,
+                `Original value: ${value}`,
+                `SSRF payload: ${payload}`,
+                'Testing internal network access',
+                'Checking URL validation bypass'
+              ],
+              severity: 'High',
+              request: testRequest,
+              response: generateMockResponse('ssrf', 'failed', key)
+            });
+          });
+        }
+      });
+    } else if (selectedVulnerabilities.has('ssrf')) {
+      // Test common SSRF vectors even without obvious URLs
       const testRequest = {
         method: parsed.method,
         url: parsed.url,
         headers: parsed.headers,
-        body: { ...parsed.body, callbackUrl: 'http://169.254.169.254/metadata' }
+        body: parsed.body ? { ...parsed.body, callbackUrl: 'http://169.254.169.254/metadata' } : { callbackUrl: 'http://169.254.169.254/metadata' }
       };
 
       results.push({
-        id: 'ssrf',
-        name: 'Server Side Request Forgery (SSRF)',
-        status: 'failed',
-        description: 'URL parameters detected in request body',
+        id: 'ssrf_general',
+        name: 'SSRF Testing - General',
+        status: 'warning',
+        description: 'Testing for SSRF vulnerabilities with callback URL injection',
         details: [
-          'Testing internal network access',
-          'Injecting metadata endpoints',
-          'Checking URL validation'
+          'Adding callbackUrl parameter',
+          'Testing metadata endpoint access',
+          'Checking URL validation',
+          'Probing internal network access'
         ],
-        severity: 'High',
+        severity: 'Medium',
         request: testRequest,
-        response: generateMockResponse('ssrf', 'failed')
+        response: generateMockResponse('ssrf', 'warning')
       });
     }
 
@@ -343,6 +516,7 @@ export const CurlTester = () => {
       "Checking authentication...",
       "Testing privilege escalation...",
       "Analyzing rate limiting...",
+      "Testing input validation...",
       "Scanning for SSRF...",
       "Validating security headers...",
       "Generating final report..."
@@ -360,7 +534,7 @@ export const CurlTester = () => {
     
     toast({
       title: "Analysis Complete",
-      description: `Found ${tests.filter(r => r.status === 'failed').length} critical issues`,
+      description: `Found ${tests.filter(r => r.status === 'failed').length} critical issues across ${tests.length} tests`,
       variant: "default"
     });
   };
