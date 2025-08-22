@@ -708,3 +708,147 @@ export const exportToZip = async (testResults: TestResult[], originalRequest: an
   a.click();
   URL.revokeObjectURL(url);
 };
+
+export const exportToMarkdown = async (testResults: TestResult[], originalRequest: any, originalResponse: any) => {
+  const reportDate = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const failedTests = testResults.filter(r => r.status === 'failed').length;
+  const warningTests = testResults.filter(r => r.status === 'warning').length;
+  const passedTests = testResults.filter(r => r.status === 'passed').length;
+
+  let markdown = '';
+  
+  // Title
+  markdown += '# API Security Test Results\n\n';
+  markdown += '*Comprehensive Security Analysis Report*\n\n';
+  
+  // Report Summary
+  markdown += '## 📊 Report Summary\n\n';
+  markdown += `- **Generated:** ${reportDate}\n`;
+  markdown += `- **Total Tests Executed:** ${testResults.length}\n`;
+  markdown += `- **Failed:** ${failedTests} ❌\n`;
+  markdown += `- **Warnings:** ${warningTests} ⚠️\n`;
+  markdown += `- **Passed:** ${passedTests} ✅\n\n`;
+  
+  // Original Request Section
+  if (originalRequest) {
+    markdown += '## 🌐 Original Request Details\n\n';
+    markdown += '| Property | Value |\n';
+    markdown += '|----------|-------|\n';
+    markdown += `| Method | \`${originalRequest.method || 'GET'}\` |\n`;
+    markdown += `| URL | \`${originalRequest.url || 'N/A'}\` |\n`;
+    
+    if (originalRequest.headers && Object.keys(originalRequest.headers).length > 0) {
+      markdown += '\n### Headers\n\n';
+      markdown += '| Header | Value |\n';
+      markdown += '|--------|-------|\n';
+      Object.entries(originalRequest.headers).forEach(([key, value]) => {
+        markdown += `| \`${key}\` | \`${value}\` |\n`;
+      });
+    }
+    
+    if (originalRequest.body) {
+      const bodyText = typeof originalRequest.body === 'string' 
+        ? originalRequest.body 
+        : JSON.stringify(originalRequest.body, null, 2);
+      markdown += '\n### Request Body\n\n';
+      markdown += '```json\n';
+      markdown += bodyText;
+      markdown += '\n```\n\n';
+    }
+  }
+  
+  // Test Results Section
+  markdown += '## 🔒 Security Test Results\n\n';
+  
+  testResults.forEach((result, index) => {
+    const statusEmoji = result.status === 'failed' ? '❌' : result.status === 'warning' ? '⚠️' : '✅';
+    const severityEmoji = result.severity === 'Critical' ? '🔴' : result.severity === 'High' ? '🟠' : result.severity === 'Medium' ? '🟡' : '🟢';
+    
+    markdown += `### ${index + 1}. ${result.name} ${statusEmoji}\n\n`;
+    markdown += `**Status:** ${result.status.toUpperCase()} | **Severity:** ${result.severity} ${severityEmoji} | **Response Time:** ${result.response.time}ms\n\n`;
+    markdown += `**Description:** ${result.description}\n\n`;
+    
+    // Request and Response Table
+    markdown += '#### Request & Response Details\n\n';
+    markdown += '| Request | Response |\n';
+    markdown += '|---------|----------|\n';
+    
+    // Build request and response content
+    const requestLines = [];
+    const responseLines = [];
+    
+    // Request content
+    requestLines.push(`**Method:** \`${result.request.method}\``);
+    requestLines.push(`**URL:** \`${result.request.url}\``);
+    
+    if (result.request.headers && Object.keys(result.request.headers).length > 0) {
+      requestLines.push('**Headers:**');
+      Object.entries(result.request.headers).forEach(([key, value]) => {
+        requestLines.push(`• \`${key}: ${value}\``);
+      });
+    }
+    
+    if (result.request.body) {
+      const bodyText = typeof result.request.body === 'string' 
+        ? result.request.body 
+        : JSON.stringify(result.request.body, null, 2);
+      requestLines.push('**Body:**');
+      requestLines.push(`\`\`\`${bodyText}\`\`\``);
+    }
+    
+    // Response content
+    responseLines.push(`**Status:** \`${result.response.status} ${result.response.statusText}\``);
+    
+    if (result.response.headers && Object.keys(result.response.headers).length > 0) {
+      responseLines.push('**Headers:**');
+      Object.entries(result.response.headers).forEach(([key, value]) => {
+        responseLines.push(`• \`${key}: ${value}\``);
+      });
+    }
+    
+    if (result.response.body) {
+      const respBodyText = typeof result.response.body === 'string' 
+        ? result.response.body 
+        : JSON.stringify(result.response.body, null, 2);
+      responseLines.push('**Body:**');
+      responseLines.push(`\`\`\`${respBodyText}\`\`\``);
+    }
+    
+    // Create table rows
+    const maxLines = Math.max(requestLines.length, responseLines.length);
+    for (let i = 0; i < maxLines; i++) {
+      const requestContent = requestLines[i] || '';
+      const responseContent = responseLines[i] || '';
+      markdown += `| ${requestContent} | ${responseContent} |\n`;
+    }
+    
+    // Test Details
+    if (result.details && result.details.length > 0) {
+      markdown += '\n#### Test Details\n\n';
+      result.details.forEach(detail => {
+        markdown += `- ${detail}\n`;
+      });
+    }
+    
+    markdown += '\n---\n\n';
+  });
+  
+  // Footer
+  markdown += '*Generated by API Security Tester*\n';
+  
+  // Download the markdown file
+  const blob = new Blob([markdown], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'security-test-results.md';
+  a.click();
+  URL.revokeObjectURL(url);
+};

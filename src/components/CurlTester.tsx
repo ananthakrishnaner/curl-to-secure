@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { generateTestPayloads } from "@/utils/testPayloads";
-import { exportToPDF, exportToDocx, exportToZip } from "@/utils/exportUtils";
+import { exportToPDF, exportToDocx, exportToZip, exportToMarkdown } from "@/utils/exportUtils";
 import { TestResultCard } from "@/components/TestResultCard";
 
 interface ParsedCurl {
@@ -62,7 +62,7 @@ export const CurlTester = () => {
   const [editableHeaders, setEditableHeaders] = useState<Record<string, string>>({});
   const [newHeaderKey, setNewHeaderKey] = useState("");
   const [newHeaderValue, setNewHeaderValue] = useState("");
-  const [exportFormat, setExportFormat] = useState<'pdf' | 'docx' | 'zip'>('pdf');
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'docx' | 'zip' | 'markdown'>('pdf');
   const { toast } = useToast();
 
   const vulnerabilityOptions = [
@@ -597,6 +597,8 @@ export const CurlTester = () => {
         await exportToDocx(testResults, originalRequest, originalResponse);
       } else if (exportFormat === 'zip') {
         await exportToZip(testResults, originalRequest, originalResponse);
+      } else if (exportFormat === 'markdown') {
+        await exportToMarkdown(testResults, originalRequest, originalResponse);
       }
       
       toast({
@@ -1037,7 +1039,7 @@ export const CurlTester = () => {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold">Security Test Results</h2>
               <div className="flex items-center gap-3">
-                <Select value={exportFormat} onValueChange={(value: 'pdf' | 'docx' | 'zip') => setExportFormat(value)}>
+                <Select value={exportFormat} onValueChange={(value: 'pdf' | 'docx' | 'zip' | 'markdown') => setExportFormat(value)}>
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
@@ -1045,6 +1047,7 @@ export const CurlTester = () => {
                     <SelectItem value="pdf">PDF</SelectItem>
                     <SelectItem value="docx">DOCX</SelectItem>
                     <SelectItem value="zip">ZIP</SelectItem>
+                    <SelectItem value="markdown">Markdown</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
