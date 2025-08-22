@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy, Eye, ChevronDown, ChevronUp, GripVertical, Move3D } from "lucide-react";
+import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy, Eye, ChevronDown, ChevronUp, GripVertical, Move3D, Download, Globe } from "lucide-react";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +51,10 @@ export const CurlTester = () => {
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
   const [selectedVulnerabilities, setSelectedVulnerabilities] = useState<Set<string>>(new Set(['bola', 'auth', 'bopla', 'rate_limit', 'input_validation', 'ssrf', 'headers']));
   const [draggedItem, setDraggedItem] = useState<TestResult | null>(null);
+  const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
+  const [sslVerify, setSslVerify] = useState(true);
+  const [originalRequest, setOriginalRequest] = useState<any>(null);
+  const [originalResponse, setOriginalResponse] = useState<any>(null);
   const { toast } = useToast();
 
   const vulnerabilityOptions = [
@@ -649,6 +655,27 @@ export const CurlTester = () => {
 
     setParsedCurl(parsed);
     
+    // Store original request and simulate response
+    setOriginalRequest({
+      method: parsed.method,
+      url: parsed.url,
+      headers: parsed.headers,
+      body: parsed.body,
+      sslVerify: sslVerify
+    });
+    
+    setOriginalResponse({
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Response-Time': '125ms',
+        'Server': 'nginx/1.18.0'
+      },
+      body: { success: true, message: 'Original request successful' },
+      time: 125
+    });
+    
     // Simulate progressive testing with realistic delays
     const tests = generateSecurityTests(parsed);
     const testSteps = [
@@ -747,12 +774,96 @@ export const CurlTester = () => {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (draggedItem) {
-      // Show detailed view in a modal or expanded section
+      setSelectedResult(draggedItem);
       toast({
         title: "Test Details",
-        description: `Viewing details for ${draggedItem.name}`,
+        description: `Viewing detailed request/response for ${draggedItem.name}`,
       });
-      setExpandedResults(new Set([draggedItem.id]));
+    }
+  };
+
+  const exportToPDF = async () => {
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      let yPosition = 20;
+
+      // Title
+      pdf.setFontSize(20);
+      pdf.setTextColor(0, 100, 200);
+      pdf.text('API Security Test Report', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 15;
+
+      // Original Request Section
+      if (originalRequest) {
+        pdf.setFontSize(14);
+        pdf.setTextColor(0, 0, 0);
+        pdf.text('Original Request:', 20, yPosition);
+        yPosition += 10;
+
+        pdf.setFontSize(10);
+        pdf.text(`URL: ${originalRequest.url}`, 20, yPosition);
+        yPosition += 5;
+        pdf.text(`Method: ${originalRequest.method}`, 20, yPosition);
+        yPosition += 5;
+        pdf.text(`SSL Verify: ${originalRequest.sslVerify ? 'Enabled' : 'Disabled'}`, 20, yPosition);
+        yPosition += 10;
+      }
+
+      // Test Results Summary
+      const failedTests = testResults.filter(r => r.status === 'failed').length;
+      const warningTests = testResults.filter(r => r.status === 'warning').length;
+      const passedTests = testResults.filter(r => r.status === 'passed').length;
+
+      pdf.setFontSize(14);
+      pdf.text('Test Summary:', 20, yPosition);
+      yPosition += 10;
+
+      pdf.setFontSize(10);
+      pdf.setTextColor(255, 0, 0);
+      pdf.text(`Failed: ${failedTests}`, 20, yPosition);
+      pdf.setTextColor(255, 165, 0);
+      pdf.text(`Warnings: ${warningTests}`, 60, yPosition);
+      pdf.setTextColor(0, 128, 0);
+      pdf.text(`Passed: ${passedTests}`, 110, yPosition);
+      yPosition += 15;
+
+      // Test Results Details
+      pdf.setFontSize(14);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Detailed Results:', 20, yPosition);
+      yPosition += 10;
+
+      testResults.forEach((result, index) => {
+        if (yPosition > pageHeight - 30) {
+          pdf.addPage();
+          yPosition = 20;
+        }
+
+        pdf.setFontSize(10);
+        pdf.setTextColor(result.status === 'failed' ? 255 : result.status === 'warning' ? 165 : 0, result.status === 'failed' ? 0 : result.status === 'warning' ? 165 : 128, result.status === 'failed' ? 0 : result.status === 'warning' ? 0 : 0);
+        pdf.text(`${index + 1}. ${result.name} - ${result.status.toUpperCase()}`, 20, yPosition);
+        yPosition += 5;
+
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(`Severity: ${result.severity}`, 25, yPosition);
+        yPosition += 5;
+        pdf.text(`Description: ${result.description}`, 25, yPosition);
+        yPosition += 10;
+      });
+
+      pdf.save('api-security-report.pdf');
+      toast({
+        title: "Export Successful",
+        description: "PDF report has been downloaded",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Could not generate PDF report",
+        variant: "destructive"
+      });
     }
   };
 
@@ -804,17 +915,32 @@ export const CurlTester = () => {
               </Button>
             </div>
 
-            {/* Vulnerability Selection */}
+            {/* SSL Options and Vulnerability Selection */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-primary">Select Vulnerabilities to Test</h4>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSelectAll}
-                >
-                  {selectedVulnerabilities.size === vulnerabilityOptions.length ? 'Deselect All' : 'Select All'}
-                </Button>
+                <h4 className="font-semibold text-primary">Test Configuration</h4>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Globe className="w-4 h-4" />
+                    <label htmlFor="ssl-verify" className="text-sm font-medium">
+                      SSL Verify:
+                    </label>
+                    <input
+                      id="ssl-verify"
+                      type="checkbox"
+                      checked={sslVerify}
+                      onChange={(e) => setSslVerify(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAll}
+                  >
+                    {selectedVulnerabilities.size === vulnerabilityOptions.length ? 'Deselect All' : 'Select All'}
+                  </Button>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {vulnerabilityOptions.map((vuln) => (
@@ -908,11 +1034,73 @@ export const CurlTester = () => {
           </Card>
         )}
 
+        {/* Original Request/Response */}
+        {originalRequest && originalResponse && (
+          <Card className="bg-gradient-card border-primary/20 mb-8">
+            <CardHeader>
+              <CardTitle>Original Request & Response</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid lg:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="font-semibold mb-3 text-primary">Request</h4>
+                  <div className="bg-muted rounded-lg p-4 space-y-2 text-sm font-mono">
+                    <div><span className="text-muted-foreground">Method:</span> {originalRequest.method}</div>
+                    <div><span className="text-muted-foreground">URL:</span> {originalRequest.url}</div>
+                    <div><span className="text-muted-foreground">SSL Verify:</span> {originalRequest.sslVerify ? 'Enabled' : 'Disabled'}</div>
+                    <div className="pt-2">
+                      <div className="text-muted-foreground mb-1">Headers:</div>
+                      <div className="bg-background rounded p-2 text-xs">
+                        {JSON.stringify(originalRequest.headers, null, 2)}
+                      </div>
+                    </div>
+                    {originalRequest.body && (
+                      <div className="pt-2">
+                        <div className="text-muted-foreground mb-1">Body:</div>
+                        <div className="bg-background rounded p-2 text-xs">
+                          {JSON.stringify(originalRequest.body, null, 2)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-3 text-primary">Response</h4>
+                  <div className="bg-muted rounded-lg p-4 space-y-2 text-sm font-mono">
+                    <div><span className="text-muted-foreground">Status:</span> {originalResponse.status} {originalResponse.statusText}</div>
+                    <div><span className="text-muted-foreground">Time:</span> {originalResponse.time}ms</div>
+                    <div className="pt-2">
+                      <div className="text-muted-foreground mb-1">Headers:</div>
+                      <div className="bg-background rounded p-2 text-xs">
+                        {JSON.stringify(originalResponse.headers, null, 2)}
+                      </div>
+                    </div>
+                    <div className="pt-2">
+                      <div className="text-muted-foreground mb-1">Body:</div>
+                      <div className="bg-background rounded p-2 text-xs">
+                        {JSON.stringify(originalResponse.body, null, 2)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Test Results */}
         {testResults.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold">Security Test Results</h2>
+              <Button
+                onClick={exportToPDF}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export PDF
+              </Button>
               <div className="text-sm text-muted-foreground flex items-center gap-2">
                 <Move3D className="w-4 h-4" />
                 Drag test cards to view detailed request/response data
@@ -1004,9 +1192,71 @@ export const CurlTester = () => {
                                     <div className="text-muted-foreground mb-1">Body:</div>
                                     <div className="text-xs bg-background/50 rounded p-2 overflow-auto">
                                       {JSON.stringify(result.request.body, null, 2)}
-                                    </div>
-                                  </div>
-                                )}
+            </div>
+
+            {/* Selected Result Details Modal */}
+            {selectedResult && (
+              <Card className="bg-gradient-card border-primary/20 mt-8">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Detailed View: {selectedResult.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedResult(null)}
+                    >
+                      <span className="text-lg">×</span>
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid lg:grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="font-semibold mb-3 text-primary">Test Request</h4>
+                      <div className="bg-muted rounded-lg p-4 space-y-2 text-sm font-mono">
+                        <div><span className="text-muted-foreground">Method:</span> {selectedResult.request.method}</div>
+                        <div><span className="text-muted-foreground">URL:</span> {selectedResult.request.url}</div>
+                        <div className="pt-2">
+                          <div className="text-muted-foreground mb-1">Headers:</div>
+                          <div className="bg-background rounded p-2 text-xs">
+                            {JSON.stringify(selectedResult.request.headers, null, 2)}
+                          </div>
+                        </div>
+                        {selectedResult.request.body && (
+                          <div className="pt-2">
+                            <div className="text-muted-foreground mb-1">Body:</div>
+                            <div className="bg-background rounded p-2 text-xs">
+                              {JSON.stringify(selectedResult.request.body, null, 2)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold mb-3 text-primary">Test Response</h4>
+                      <div className="bg-muted rounded-lg p-4 space-y-2 text-sm font-mono">
+                        <div><span className="text-muted-foreground">Status:</span> {selectedResult.response.status} {selectedResult.response.statusText}</div>
+                        <div><span className="text-muted-foreground">Time:</span> {selectedResult.response.time}ms</div>
+                        <div className="pt-2">
+                          <div className="text-muted-foreground mb-1">Headers:</div>
+                          <div className="bg-background rounded p-2 text-xs">
+                            {JSON.stringify(selectedResult.response.headers, null, 2)}
+                          </div>
+                        </div>
+                        <div className="pt-2">
+                          <div className="text-muted-foreground mb-1">Body:</div>
+                          <div className="bg-background rounded p-2 text-xs">
+                            {JSON.stringify(selectedResult.response.body, null, 2)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
                               </div>
                             </div>
 
