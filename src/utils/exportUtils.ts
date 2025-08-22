@@ -202,6 +202,21 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
     pdf.text(reqUrlLines, 25, yPos);
     yPos += reqUrlLines.length * 4;
     
+    // Request headers
+    if (result.request.headers && Object.keys(result.request.headers).length > 0) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('  Request Headers:', 25, yPos);
+      pdf.setFont('helvetica', 'normal');
+      yPos += 4;
+      
+      Object.entries(result.request.headers).forEach(([key, value]) => {
+        const headerText = `    ${key}: ${value}`;
+        const headerLines = pdf.splitTextToSize(headerText, 150);
+        pdf.text(headerLines, 25, yPos);
+        yPos += headerLines.length * 4;
+      });
+    }
+    
     if (result.request.body) {
       const bodyText = typeof result.request.body === 'string' 
         ? result.request.body 
@@ -225,6 +240,21 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
     
     pdf.text(`  Status: ${result.response.status} ${result.response.statusText}`, 25, yPos);
     yPos += 4;
+    
+    // Response headers
+    if (result.response.headers && Object.keys(result.response.headers).length > 0) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('  Response Headers:', 25, yPos);
+      pdf.setFont('helvetica', 'normal');
+      yPos += 4;
+      
+      Object.entries(result.response.headers).forEach(([key, value]) => {
+        const headerText = `    ${key}: ${value}`;
+        const headerLines = pdf.splitTextToSize(headerText, 150);
+        pdf.text(headerLines, 25, yPos);
+        yPos += headerLines.length * 4;
+      });
+    }
     
     if (result.response.body) {
       const respBodyText = typeof result.response.body === 'string' 
