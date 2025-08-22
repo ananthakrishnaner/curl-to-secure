@@ -770,7 +770,6 @@ export const exportToMarkdown = async (testResults: TestResult[], originalReques
     const severityEmoji = result.severity === 'Critical' ? '🔴' : result.severity === 'High' ? '🟠' : result.severity === 'Medium' ? '🟡' : '🟢';
     
     markdown += `### ${index + 1}. ${result.name} ${statusEmoji}\n\n`;
-    markdown += `**Status:** ${result.status.toUpperCase()} | **Severity:** ${result.severity} ${severityEmoji} | **Response Time:** ${result.response.time}ms\n\n`;
     markdown += `**Description:** ${result.description}\n\n`;
     
     // Request Details Section
