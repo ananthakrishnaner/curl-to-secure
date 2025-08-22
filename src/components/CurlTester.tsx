@@ -83,39 +83,29 @@ export const CurlTester = () => {
 
   const parseCurlCommand = (curl: string): ParsedCurl | null => {
     try {
+      console.log('🔍 Original cURL command:', curl);
+      
       // Normalize the curl command - remove line breaks and extra spaces
       const normalizedCurl = curl.replace(/\\\s*\n/g, ' ').replace(/\s+/g, ' ').trim();
+      console.log('🔧 Normalized cURL:', normalizedCurl);
       
       // Extract URL - handle various formats including quoted URLs
-      let urlMatch = normalizedCurl.match(/curl\s+(?:-[^\s]*\s+)*['"]?([^'"]+)['"]?/);
+      let urlMatch = normalizedCurl.match(/curl\s+(?:-[^\s]*\s+)*['"]?([^'"\s]+)['"]?/);
       if (!urlMatch) {
         // Try alternative patterns for URLs with -X before URL
-        urlMatch = normalizedCurl.match(/-X\s+[A-Z]+\s+['"]?([^'"]+)['"]?/i);
+        urlMatch = normalizedCurl.match(/-X\s+[A-Z]+\s+['"]?([^'"\s]+)['"]?/i);
       }
       if (!urlMatch) {
         // Try finding any http/https URL in the command
         urlMatch = normalizedCurl.match(/['"]?(https?:\/\/[^'"?\s]+)['"]?/);
       }
       
-      // Extract method
-      const methodMatch = normalizedCurl.match(/-X\s+([A-Z]+)/i) || normalizedCurl.match(/--request\s+([A-Z]+)/i);
-      
-      // Extract headers - handle multiple formats
-      const headerMatches = [
-        ...normalizedCurl.matchAll(/-H\s+["']([^"']+)["']/g),
-        ...normalizedCurl.matchAll(/--header\s+["']([^"']+)["']/g),
-        ...normalizedCurl.matchAll(/-H\s+([^"'\s][^\s]*:\s*[^"'\s][^\s]*)/g)
-      ];
-      
-      // Extract body data - handle multiple formats and multiline JSON
-      let bodyMatch = normalizedCurl.match(/-d\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
-                     normalizedCurl.match(/--data\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
-                     normalizedCurl.match(/--data-raw\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
-                     normalizedCurl.match(/--json\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
-                     // Handle unquoted data
-                     normalizedCurl.match(/-d\s+([^-\s][^\s]*(?:\s+[^-][^\s]*)*)/);
+      console.log('🎯 URL matches:', urlMatch);
 
-      if (!urlMatch) return null;
+      if (!urlMatch) {
+        console.log('❌ No URL found in cURL command');
+        return null;
+      }
 
       // Clean the URL of any surrounding quotes
       let url = urlMatch[1].replace(/^['"]|['"]$/g, '');
@@ -124,7 +114,31 @@ export const CurlTester = () => {
       if (!url.match(/^https?:\/\//)) {
         url = 'https://' + url;
       }
+      console.log('🌐 Final URL:', url);
+      
+      // Extract method
+      const methodMatch = normalizedCurl.match(/-X\s+([A-Z]+)/i) || normalizedCurl.match(/--request\s+([A-Z]+)/i);
       const method = methodMatch?.[1]?.toUpperCase() || 'GET';
+      console.log('📋 Method:', method);
+      
+      // Extract headers - handle multiple formats
+      const headerMatches = [
+        ...normalizedCurl.matchAll(/-H\s+["']([^"']+)["']/g),
+        ...normalizedCurl.matchAll(/--header\s+["']([^"']+)["']/g),
+        ...normalizedCurl.matchAll(/-H\s+([^"'\s][^\s]*:\s*[^"'\s][^\s]*)/g)
+      ];
+      console.log('📝 Header matches:', Array.from(headerMatches).map(m => m[1]));
+      
+      // Extract body data - handle multiple formats and multiline JSON
+      let bodyMatch = normalizedCurl.match(/-d\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
+                     normalizedCurl.match(/--data\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
+                     normalizedCurl.match(/--data-raw\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
+                     normalizedCurl.match(/--json\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
+                     // Handle unquoted data
+                     normalizedCurl.match(/-d\s+([^-\s][^\s]*(?:\s+[^-][^\s]*)*)/);
+      
+      console.log('📦 Body match:', bodyMatch ? bodyMatch[1] : 'No body found');
+
       const headers: Record<string, string> = {};
       
       // Process headers
@@ -137,22 +151,28 @@ export const CurlTester = () => {
           if (key && value) headers[key] = value;
         }
       }
+      console.log('📋 Final headers:', headers);
 
       // Process body
       let body = null;
       if (bodyMatch) {
         try {
           body = JSON.parse(bodyMatch[1]);
+          console.log('✅ Parsed JSON body:', body);
         } catch {
           // If not valid JSON, store as string
           body = bodyMatch[1];
+          console.log('📄 String body:', body);
         }
       }
 
       const endpoint = new URL(url).pathname;
-      return { url, method, headers, body, endpoint };
+      const result = { url, method, headers, body, endpoint };
+      console.log('🎉 Final parsed result:', result);
+      
+      return result;
     } catch (error) {
-      console.error('cURL parsing error:', error);
+      console.error('❌ cURL parsing error:', error);
       return null;
     }
   };
