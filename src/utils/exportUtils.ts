@@ -739,25 +739,23 @@ export const exportToMarkdown = async (testResults: TestResult[], originalReques
   // Original Request Section
   if (originalRequest) {
     markdown += '## 🌐 Original Request Details\n\n';
-    markdown += '| Property | Value |\n';
-    markdown += '|----------|-------|\n';
-    markdown += `| Method | \`${originalRequest.method || 'GET'}\` |\n`;
-    markdown += `| URL | \`${originalRequest.url || 'N/A'}\` |\n`;
+    markdown += `**Method:** \`${originalRequest.method || 'GET'}\`\n\n`;
+    markdown += `**URL:** \`${originalRequest.url || 'N/A'}\`\n\n`;
     
     if (originalRequest.headers && Object.keys(originalRequest.headers).length > 0) {
-      markdown += '\n### Headers\n\n';
-      markdown += '| Header | Value |\n';
-      markdown += '|--------|-------|\n';
+      markdown += '### Headers\n\n';
+      markdown += '```\n';
       Object.entries(originalRequest.headers).forEach(([key, value]) => {
-        markdown += `| \`${key}\` | \`${value}\` |\n`;
+        markdown += `${key}: ${value}\n`;
       });
+      markdown += '```\n\n';
     }
     
     if (originalRequest.body) {
       const bodyText = typeof originalRequest.body === 'string' 
         ? originalRequest.body 
         : JSON.stringify(originalRequest.body, null, 2);
-      markdown += '\n### Request Body\n\n';
+      markdown += '### Request Body\n\n';
       markdown += '```json\n';
       markdown += bodyText;
       markdown += '\n```\n\n';
@@ -775,69 +773,59 @@ export const exportToMarkdown = async (testResults: TestResult[], originalReques
     markdown += `**Status:** ${result.status.toUpperCase()} | **Severity:** ${result.severity} ${severityEmoji} | **Response Time:** ${result.response.time}ms\n\n`;
     markdown += `**Description:** ${result.description}\n\n`;
     
-    // Request and Response Table
-    markdown += '#### Request & Response Details\n\n';
-    markdown += '| Request | Response |\n';
-    markdown += '|---------|----------|\n';
-    
-    // Build request and response content
-    const requestLines = [];
-    const responseLines = [];
-    
-    // Request content
-    requestLines.push(`**Method:** \`${result.request.method}\``);
-    requestLines.push(`**URL:** \`${result.request.url}\``);
+    // Request Details Section
+    markdown += '#### 📤 Request Details\n\n';
+    markdown += `**Method:** \`${result.request.method}\`\n\n`;
+    markdown += `**URL:** \`${result.request.url}\`\n\n`;
     
     if (result.request.headers && Object.keys(result.request.headers).length > 0) {
-      requestLines.push('**Headers:**');
+      markdown += '**Headers:**\n```\n';
       Object.entries(result.request.headers).forEach(([key, value]) => {
-        requestLines.push(`• \`${key}: ${value}\``);
+        markdown += `${key}: ${value}\n`;
       });
+      markdown += '```\n\n';
     }
     
     if (result.request.body) {
       const bodyText = typeof result.request.body === 'string' 
         ? result.request.body 
         : JSON.stringify(result.request.body, null, 2);
-      requestLines.push('**Body:**');
-      requestLines.push(`\`\`\`${bodyText}\`\`\``);
+      markdown += '**Request Body:**\n```json\n';
+      markdown += bodyText;
+      markdown += '\n```\n\n';
     }
     
-    // Response content
-    responseLines.push(`**Status:** \`${result.response.status} ${result.response.statusText}\``);
+    // Response Details Section
+    markdown += '#### 📥 Response Details\n\n';
+    markdown += `**Status:** \`${result.response.status} ${result.response.statusText}\`\n\n`;
     
     if (result.response.headers && Object.keys(result.response.headers).length > 0) {
-      responseLines.push('**Headers:**');
+      markdown += '**Headers:**\n```\n';
       Object.entries(result.response.headers).forEach(([key, value]) => {
-        responseLines.push(`• \`${key}: ${value}\``);
+        markdown += `${key}: ${value}\n`;
       });
+      markdown += '```\n\n';
     }
     
     if (result.response.body) {
       const respBodyText = typeof result.response.body === 'string' 
         ? result.response.body 
         : JSON.stringify(result.response.body, null, 2);
-      responseLines.push('**Body:**');
-      responseLines.push(`\`\`\`${respBodyText}\`\`\``);
-    }
-    
-    // Create table rows
-    const maxLines = Math.max(requestLines.length, responseLines.length);
-    for (let i = 0; i < maxLines; i++) {
-      const requestContent = requestLines[i] || '';
-      const responseContent = responseLines[i] || '';
-      markdown += `| ${requestContent} | ${responseContent} |\n`;
+      markdown += '**Response Body:**\n```json\n';
+      markdown += respBodyText;
+      markdown += '\n```\n\n';
     }
     
     // Test Details
     if (result.details && result.details.length > 0) {
-      markdown += '\n#### Test Details\n\n';
+      markdown += '#### 🔍 Test Details\n\n';
       result.details.forEach(detail => {
         markdown += `- ${detail}\n`;
       });
+      markdown += '\n';
     }
     
-    markdown += '\n---\n\n';
+    markdown += '---\n\n';
   });
   
   // Footer
