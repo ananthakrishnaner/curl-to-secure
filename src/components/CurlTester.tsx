@@ -135,22 +135,23 @@ export const CurlTester = () => {
       const headerMatches = [];
       
       // Pattern 1: -H "Header: Value"
-      const headerPattern1 = normalizedCurl.matchAll(/-H\s+"([^"]+)"/g);
+      const headerPattern1 = [...normalizedCurl.matchAll(/-H\s+"([^"]+)"/g)];
       headerMatches.push(...headerPattern1);
       
       // Pattern 2: -H 'Header: Value'
-      const headerPattern2 = normalizedCurl.matchAll(/-H\s+'([^']+)'/g);
+      const headerPattern2 = [...normalizedCurl.matchAll(/-H\s+'([^']+)'/g)];
       headerMatches.push(...headerPattern2);
       
       // Pattern 3: --header "Header: Value"
-      const headerPattern3 = normalizedCurl.matchAll(/--header\s+"([^"]+)"/g);
+      const headerPattern3 = [...normalizedCurl.matchAll(/--header\s+"([^"]+)"/g)];
       headerMatches.push(...headerPattern3);
       
       // Pattern 4: --header 'Header: Value'
-      const headerPattern4 = normalizedCurl.matchAll(/--header\s+'([^']+)'/g);
+      const headerPattern4 = [...normalizedCurl.matchAll(/--header\s+'([^']+)'/g)];
       headerMatches.push(...headerPattern4);
       
-      console.log('📝 Header matches:', Array.from(headerMatches).map(m => m[1]));
+      console.log('📝 Header matches found:', headerMatches.length);
+      console.log('📝 Header content:', headerMatches.map(m => m[1]));
       
       // Extract body data - handle multiple formats and multiline JSON
       let bodyMatch = null;
@@ -882,7 +883,81 @@ ${index + 1}. ${result.name} - ${result.status.toUpperCase()}
     }
   };
 
+  const generateCurlFromRequest = (request: any) => {
+    let curlCmd = `curl -X ${request.method}`;
+    
+    // Add URL (with proper quoting if it contains special characters)
+    curlCmd += ` '${request.url}'`;
+    
+    // Add headers
+    if (request.headers && Object.keys(request.headers).length > 0) {
+      Object.entries(request.headers).forEach(([key, value]) => {
+        curlCmd += ` \\\n  -H '${key}: ${value}'`;
+      });
+    }
+    
+    // Add body if present
+    if (request.body) {
+      const bodyStr = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
+      curlCmd += ` \\\n  -d '${bodyStr}'`;
+    }
+    
+    return curlCmd;
+  };
+
+  const copyTestCurl = async (request: any) => {
+    const curlCommand = generateCurlFromRequest(request);
+    try {
+      await navigator.clipboard.writeText(curlCommand);
+      toast({
+        title: "Copied to Clipboard",
+        description: "cURL command has been copied",
+      });
+    } catch (error) {
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy to clipboard",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const updateParsedUrl = (newUrl: string) => {
+    if (parsedCurl) {
+      setParsedCurl({ ...parsedCurl, url: newUrl });
+    }
+  };
+
+  const updateParsedMethod = (newMethod: string) => {
+    if (parsedCurl) {
+      setParsedCurl({ ...parsedCurl, method: newMethod.toUpperCase() });
+    }
+  };
+
   const handleExport = () => {
+    switch (exportFormat) {
+      case 'pdf':
+        exportToPDF();
+        break;
+      case 'docx':
+        exportToDocx();
+        break;
+      case 'zip':
+        exportToZip();
+        break;
+    }
+  };
+
+  const updateParsedBody = (newBody: string) => {
+    if (parsedCurl) {
+      try {
+        const parsed = JSON.parse(newBody);
+        setParsedCurl({ ...parsedCurl, body: parsed });
+      } catch {
+        setParsedCurl({ ...parsedCurl, body: newBody });
+      }
+    }
+  };
     switch (exportFormat) {
       case 'pdf':
         exportToPDF();
@@ -1263,15 +1338,33 @@ ${index + 1}. ${result.name} - ${result.status.toUpperCase()}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Request Summary */}
+              {/* Request Summary - Make Editable */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 rounded-lg bg-muted/50 border">
-                  <h4 className="font-semibold text-sm text-muted-foreground">Method</h4>
-                  <p className="text-lg font-mono">{parsedCurl.method}</p>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-2">Method</h4>
+                  <Select value={parsedCurl.method} onValueChange={updateParsedMethod}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GET">GET</SelectItem>
+                      <SelectItem value="POST">POST</SelectItem>
+                      <SelectItem value="PUT">PUT</SelectItem>
+                      <SelectItem value="DELETE">DELETE</SelectItem>
+                      <SelectItem value="PATCH">PATCH</SelectItem>
+                      <SelectItem value="HEAD">HEAD</SelectItem>
+                      <SelectItem value="OPTIONS">OPTIONS</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="p-4 rounded-lg bg-muted/50 border col-span-2">
-                  <h4 className="font-semibold text-sm text-muted-foreground">URL</h4>
-                  <p className="text-sm font-mono break-all">{parsedCurl.url}</p>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-2">URL</h4>
+                  <Input
+                    value={parsedCurl.url}
+                    onChange={(e) => updateParsedUrl(e.target.value)}
+                    className="font-mono text-sm"
+                    placeholder="Enter URL"
+                  />
                 </div>
               </div>
 
@@ -1344,13 +1437,16 @@ ${index + 1}. ${result.name} - ${result.status.toUpperCase()}
                 </div>
               </div>
 
-              {/* Request Body */}
-              {parsedCurl.body && (
+              {/* Request Body - Make Editable */}
+              {parsedCurl.body !== null && (
                 <div className="space-y-2">
                   <h4 className="font-semibold text-primary">Request Body</h4>
-                  <div className="p-4 rounded-lg bg-muted/50 border font-mono text-sm overflow-auto max-h-64">
-                    <pre>{JSON.stringify(parsedCurl.body, null, 2)}</pre>
-                  </div>
+                  <Textarea
+                    value={typeof parsedCurl.body === 'string' ? parsedCurl.body : JSON.stringify(parsedCurl.body, null, 2)}
+                    onChange={(e) => updateParsedBody(e.target.value)}
+                    className="font-mono text-sm min-h-32"
+                    placeholder="Enter request body (JSON or text)"
+                  />
                 </div>
               )}
 
