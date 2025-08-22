@@ -64,31 +64,69 @@ export const CurlTester = () => {
   const exampleCurl = `curl -X POST https://api.example.com/users \\
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoxMjM0NTY3ODkwLCJuYW1lIjoiSm9obiBEb2UifQ.Ks7KcdjrlUWKqJmXiWKt1nKaWhLZHzJyWnkhzUa6GwA" \\
   -H "Content-Type: application/json" \\
-  -d '{"userId": 123, "role": "user", "email": "john@example.com", "isAdmin": false}'`;
+  -H "User-Agent: MyApp/1.0" \\
+  --data-raw '{"userId": 123, "role": "user", "email": "john@example.com", "isAdmin": false, "callbackUrl": "https://webhook.site/test"}'`;
 
   const parseCurlCommand = (curl: string): ParsedCurl | null => {
     try {
-      const urlMatch = curl.match(/curl\s+(?:-X\s+\w+\s+)?(?:["']?)([^"'\s]+)(?:["']?)/);
-      const methodMatch = curl.match(/-X\s+(\w+)/);
-      const headerMatches = curl.matchAll(/-H\s+["']([^"']+)["']/g);
-      const bodyMatch = curl.match(/-d\s+['"`]([^'"`]+)['"`]/);
+      // Normalize the curl command - remove line breaks and extra spaces
+      const normalizedCurl = curl.replace(/\\\s*\n/g, ' ').replace(/\s+/g, ' ').trim();
+      
+      // Extract URL - handle various formats
+      let urlMatch = normalizedCurl.match(/curl\s+(?:-[^\s]*\s+)*(?:["']?)([^"'\s]+)(?:["']?)/);
+      if (!urlMatch) {
+        // Try alternative patterns
+        urlMatch = normalizedCurl.match(/(?:curl\s+)(?:.*?\s+)?(?:["']?)((https?:\/\/|ftp:\/\/)[^"'\s]+)(?:["']?)/);
+      }
+      
+      // Extract method
+      const methodMatch = normalizedCurl.match(/-X\s+([A-Z]+)/i) || normalizedCurl.match(/--request\s+([A-Z]+)/i);
+      
+      // Extract headers - handle multiple formats
+      const headerMatches = [
+        ...normalizedCurl.matchAll(/-H\s+["']([^"']+)["']/g),
+        ...normalizedCurl.matchAll(/--header\s+["']([^"']+)["']/g),
+        ...normalizedCurl.matchAll(/-H\s+([^"'\s][^\s]*:\s*[^"'\s][^\s]*)/g)
+      ];
+      
+      // Extract body data - handle multiple formats
+      let bodyMatch = normalizedCurl.match(/-d\s+['"`]([^'"`]+)['"`]/) ||
+                     normalizedCurl.match(/--data\s+['"`]([^'"`]+)['"`]/) ||
+                     normalizedCurl.match(/--data-raw\s+['"`]([^'"`]+)['"`]/) ||
+                     normalizedCurl.match(/--json\s+['"`]([^'"`]+)['"`]/);
 
       if (!urlMatch) return null;
 
       const url = urlMatch[1];
-      const method = methodMatch?.[1] || 'GET';
+      const method = methodMatch?.[1]?.toUpperCase() || 'GET';
       const headers: Record<string, string> = {};
       
+      // Process headers
       for (const match of headerMatches) {
-        const [key, value] = match[1].split(': ');
-        if (key && value) headers[key] = value;
+        const headerLine = match[1];
+        const colonIndex = headerLine.indexOf(':');
+        if (colonIndex > 0) {
+          const key = headerLine.substring(0, colonIndex).trim();
+          const value = headerLine.substring(colonIndex + 1).trim();
+          if (key && value) headers[key] = value;
+        }
       }
 
-      const body = bodyMatch ? JSON.parse(bodyMatch[1]) : null;
-      const endpoint = new URL(url).pathname;
+      // Process body
+      let body = null;
+      if (bodyMatch) {
+        try {
+          body = JSON.parse(bodyMatch[1]);
+        } catch {
+          // If not valid JSON, store as string
+          body = bodyMatch[1];
+        }
+      }
 
+      const endpoint = new URL(url).pathname;
       return { url, method, headers, body, endpoint };
     } catch (error) {
+      console.error('cURL parsing error:', error);
       return null;
     }
   };
@@ -453,26 +491,130 @@ export const CurlTester = () => {
 
     // Security Headers Check
     if (selectedVulnerabilities.has('headers')) {
-      const headersTestRequest = {
-      method: parsed.method,
-      url: parsed.url,
-      headers: parsed.headers,
-      body: parsed.body
-    };
+      const securityHeaderTests = [
+        {
+          header: 'Strict-Transport-Security',
+          name: 'HSTS (HTTP Strict Transport Security)',
+          checkFunction: (value: string) => {
+            if (!value) return { status: 'failed', issue: 'HSTS header missing' };
+            const maxAge = value.match(/max-age=(\d+)/);
+            const includesSubdomains = value.includes('includeSubDomains');
+            const preload = value.includes('preload');
+            
+            if (!maxAge || parseInt(maxAge[1]) < 31536000) {
+              return { status: 'warning', issue: 'max-age should be at least 1 year (31536000)' };
+            }
+            if (!includesSubdomains) {
+              return { status: 'warning', issue: 'Consider adding includeSubDomains directive' };
+            }
+            return { status: 'passed', issue: null };
+          }
+        },
+        {
+          header: 'Content-Security-Policy',
+          name: 'CSP (Content Security Policy)',
+          checkFunction: (value: string) => {
+            if (!value) return { status: 'failed', issue: 'CSP header missing' };
+            if (value.includes("'unsafe-inline'") || value.includes("'unsafe-eval'")) {
+              return { status: 'warning', issue: "Contains unsafe directives ('unsafe-inline' or 'unsafe-eval')" };
+            }
+            if (!value.includes('default-src')) {
+              return { status: 'warning', issue: 'Missing default-src fallback directive' };
+            }
+            return { status: 'passed', issue: null };
+          }
+        },
+        {
+          header: 'X-Frame-Options',
+          name: 'X-Frame-Options (Clickjacking Protection)',
+          checkFunction: (value: string) => {
+            if (!value) return { status: 'failed', issue: 'X-Frame-Options header missing' };
+            if (!['DENY', 'SAMEORIGIN'].includes(value.toUpperCase())) {
+              return { status: 'warning', issue: 'Should be DENY or SAMEORIGIN' };
+            }
+            return { status: 'passed', issue: null };
+          }
+        },
+        {
+          header: 'X-Content-Type-Options',
+          name: 'X-Content-Type-Options (MIME Sniffing Protection)',
+          checkFunction: (value: string) => {
+            if (!value) return { status: 'failed', issue: 'X-Content-Type-Options header missing' };
+            if (value.toLowerCase() !== 'nosniff') {
+              return { status: 'warning', issue: 'Should be set to "nosniff"' };
+            }
+            return { status: 'passed', issue: null };
+          }
+        },
+        {
+          header: 'Referrer-Policy',
+          name: 'Referrer-Policy (Referrer Information Control)',
+          checkFunction: (value: string) => {
+            if (!value) return { status: 'failed', issue: 'Referrer-Policy header missing' };
+            const securePolicies = ['no-referrer', 'strict-origin-when-cross-origin', 'strict-origin'];
+            if (!securePolicies.includes(value.toLowerCase())) {
+              return { status: 'warning', issue: 'Consider using a more restrictive policy' };
+            }
+            return { status: 'passed', issue: null };
+          }
+        },
+        {
+          header: 'Permissions-Policy',
+          name: 'Permissions-Policy (Feature Policy)',
+          checkFunction: (value: string) => {
+            if (!value) return { status: 'warning', issue: 'Permissions-Policy header missing (recommended)' };
+            const sensitiveFunctions = ['microphone', 'camera', 'geolocation', 'payment'];
+            const hasRestrictions = sensitiveFunctions.some(func => value.includes(`${func}=()`));
+            if (!hasRestrictions) {
+              return { status: 'warning', issue: 'Consider restricting sensitive browser features' };
+            }
+            return { status: 'passed', issue: null };
+          }
+        }
+      ];
 
-    results.push({
-      id: 'headers',
-      name: 'Security Headers Check',
-      status: 'passed',
-      description: 'Proper Content-Type header detected',
-      details: [
-        'Content-Type header present',
-        'JSON content properly specified',
-        'No obvious header injection'
-      ],
-      severity: 'Low',
-      request: headersTestRequest,
-      response: generateMockResponse('headers', 'passed')
+      securityHeaderTests.forEach(test => {
+        // Mock response headers with some common security headers
+        const mockResponseHeaders = {
+          'Content-Type': 'application/json',
+          'X-Response-Time': '150ms',
+          'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          // Intentionally missing some headers to show vulnerabilities
+        };
+
+        const headerValue = mockResponseHeaders[test.header] || '';
+        const testResult = test.checkFunction(headerValue);
+        
+        const testRequest = {
+          method: parsed.method,
+          url: parsed.url,
+          headers: parsed.headers,
+          body: parsed.body
+        };
+
+        results.push({
+          id: `header_${test.header.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+          name: `Security Header: ${test.name}`,
+          status: testResult.status as 'passed' | 'failed' | 'warning',
+          description: testResult.issue || `${test.header} header properly configured`,
+          details: [
+            `Header: ${test.header}`,
+            `Current value: ${headerValue || 'Not present'}`,
+            testResult.issue ? `Issue: ${testResult.issue}` : 'Properly configured',
+            'Testing response security headers configuration'
+          ],
+          severity: testResult.status === 'failed' ? 'High' : testResult.status === 'warning' ? 'Medium' : 'Low',
+          request: testRequest,
+          response: {
+            status: 200,
+            statusText: 'OK',
+            headers: mockResponseHeaders,
+            body: { message: 'Security headers analysis complete' },
+            time: 120
+          }
+        });
       });
     }
 
