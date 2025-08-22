@@ -1,9 +1,5 @@
 import { useState } from "react";
 import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy, Eye, ChevronDown, ChevronUp, GripVertical, Move3D, Download, Globe, Edit3, Plus, X } from "lucide-react";
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType } from 'docx';
-import JSZip from 'jszip';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +10,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { generateTestPayloads } from "@/utils/testPayloads";
+import { exportToPDF, exportToDocx, exportToZip } from "@/utils/exportUtils";
+import { TestResultCard } from "@/components/TestResultCard";
 
 interface ParsedCurl {
   url: string;
@@ -54,6 +53,7 @@ export const CurlTester = () => {
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
   const [selectedVulnerabilities, setSelectedVulnerabilities] = useState<Set<string>>(new Set(['bola', 'auth', 'bopla', 'rate_limit', 'input_validation', 'ssrf', 'headers']));
+  const [scanType, setScanType] = useState<'basic' | 'advanced'>('basic');
   const [draggedItem, setDraggedItem] = useState<TestResult | null>(null);
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
   const [sslVerify, setSslVerify] = useState(true);
@@ -389,56 +389,26 @@ export const CurlTester = () => {
       time: 125
     });
     
+    // Generate test payloads based on scan type
+    const testPayloads = generateTestPayloads(parsed, scanType);
+    
     // Simulate progressive testing
-    const mockResults: TestResult[] = [
-      {
-        id: 'test1',
-        name: 'Authentication Testing',
-        status: 'failed',
-        description: 'Bearer token authentication detected',
-        details: ['Testing requests without Authorization header', 'Testing with malformed tokens'],
-        severity: 'High',
-        request: { ...parsed, headers: { ...parsed.headers, Authorization: '' } },
-        response: {
-          status: 401,
-          statusText: 'Unauthorized',
-          headers: { 'Content-Type': 'application/json' },
-          body: { error: 'Authentication required' },
-          time: 150
-        }
-      },
-      {
-        id: 'test2',
-        name: 'Input Validation Testing',
-        status: 'warning',
-        description: 'Testing SQL injection in parameters',
-        details: ['Testing SQL injection payloads', 'Checking parameter validation'],
-        severity: 'Medium',
-        request: { ...parsed, body: { ...parsed.body, malicious: "'; DROP TABLE users; --" } },
-        response: {
-          status: 400,
-          statusText: 'Bad Request',
-          headers: { 'Content-Type': 'application/json' },
-          body: { error: 'Invalid input detected' },
-          time: 200
-        }
-      }
-    ];
-
-    // Simulate progressive analysis
-    for (let i = 0; i < mockResults.length; i++) {
-      setCurrentTest(`Testing ${mockResults[i].name}...`);
-      setAnalysisProgress((i + 1) / mockResults.length * 100);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    for (let i = 0; i < testPayloads.length; i++) {
+      setCurrentTest(`Testing ${testPayloads[i].name}...`);
+      setAnalysisProgress((i + 1) / testPayloads.length * 100);
+      await new Promise(resolve => setTimeout(resolve, 800)); // Faster for more tests
     }
     
-    setTestResults(mockResults);
+    setTestResults(testPayloads);
     setIsAnalyzing(false);
     setCurrentTest("");
     
+    const failedTests = testPayloads.filter(r => r.status === 'failed').length;
+    const warningTests = testPayloads.filter(r => r.status === 'warning').length;
+    
     toast({
       title: "Analysis Complete",
-      description: `Found ${mockResults.filter(r => r.status === 'failed').length} critical issues`,
+      description: `${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan: ${failedTests} failed, ${warningTests} warnings`,
     });
   };
 
@@ -482,12 +452,17 @@ export const CurlTester = () => {
   const exportResults = async () => {
     try {
       if (exportFormat === 'pdf') {
-        await exportToPDF();
+        await exportToPDF(testResults, originalRequest, originalResponse);
       } else if (exportFormat === 'docx') {
-        await exportToDocx();
+        await exportToDocx(testResults, originalRequest, originalResponse);
       } else if (exportFormat === 'zip') {
-        await exportToZip();
+        await exportToZip(testResults, originalRequest, originalResponse);
       }
+      
+      toast({
+        title: "Export Successful",
+        description: `Security test results exported as ${exportFormat.toUpperCase()}`,
+      });
     } catch (error) {
       toast({
         title: "Export Failed",
@@ -495,151 +470,6 @@ export const CurlTester = () => {
         variant: "destructive"
       });
     }
-  };
-
-  const exportToPDF = async () => {
-    const pdf = new jsPDF();
-    
-    // Add title
-    pdf.setFontSize(20);
-    pdf.text('API Security Test Results', 20, 30);
-    
-    // Add test results
-    let yPosition = 50;
-    testResults.forEach((result, index) => {
-      if (yPosition > 250) {
-        pdf.addPage();
-        yPosition = 30;
-      }
-      
-      pdf.setFontSize(14);
-      pdf.text(`${index + 1}. ${result.name}`, 20, yPosition);
-      yPosition += 10;
-      
-      pdf.setFontSize(10);
-      pdf.text(`Status: ${result.status}`, 20, yPosition);
-      pdf.text(`Severity: ${result.severity}`, 120, yPosition);
-      yPosition += 10;
-      
-      pdf.text(`Description: ${result.description}`, 20, yPosition);
-      yPosition += 15;
-    });
-    
-    pdf.save('security-test-results.pdf');
-    
-    toast({
-      title: "PDF Exported",
-      description: "Security test results exported as PDF",
-    });
-  };
-
-  const exportToDocx = async () => {
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        children: [
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "API Security Test Results",
-                bold: true,
-                size: 32,
-              }),
-            ],
-          }),
-          ...testResults.flatMap((result, index) => [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `${index + 1}. ${result.name}`,
-                  bold: true,
-                  size: 24,
-                }),
-              ],
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `Status: ${result.status} | Severity: ${result.severity}`,
-                  size: 20,
-                }),
-              ],
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `Description: ${result.description}`,
-                  size: 20,
-                }),
-              ],
-            }),
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `Details: ${result.details.join(', ')}`,
-                  size: 20,
-                }),
-              ],
-            }),
-            new Paragraph({
-              children: [new TextRun({ text: "" })],
-            }),
-          ]),
-        ],
-      }],
-    });
-
-    const buffer = await Packer.toBuffer(doc);
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'security-test-results.docx';
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: "DOCX Exported",
-      description: "Security test results exported as DOCX",
-    });
-  };
-
-  const exportToZip = async () => {
-    const zip = new JSZip();
-    
-    // Add JSON report
-    const jsonReport = {
-      timestamp: new Date().toISOString(),
-      originalRequest: originalRequest,
-      originalResponse: originalResponse,
-      testResults: testResults
-    };
-    zip.file('security-report.json', JSON.stringify(jsonReport, null, 2));
-    
-    // Add text summary
-    let textSummary = 'API Security Test Results\n';
-    textSummary += '========================\n\n';
-    testResults.forEach((result, index) => {
-      textSummary += `${index + 1}. ${result.name}\n`;
-      textSummary += `   Status: ${result.status}\n`;
-      textSummary += `   Severity: ${result.severity}\n`;
-      textSummary += `   Description: ${result.description}\n`;
-      textSummary += `   Details: ${result.details.join(', ')}\n\n`;
-    });
-    zip.file('summary.txt', textSummary);
-    
-    const content = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(content);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'security-test-results.zip';
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: "ZIP Exported",
-      description: "Security test results exported as ZIP",
-    });
   };
 
   return (
@@ -717,6 +547,33 @@ export const CurlTester = () => {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Scan Type Selection */}
+            <div className="bg-muted/20 p-4 rounded-lg border">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                Scan Type
+              </h3>
+              <Select value={scanType} onValueChange={(value: 'basic' | 'advanced') => setScanType(value)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="basic">
+                    <div className="flex flex-col items-start">
+                      <span>Basic Scan</span>
+                      <span className="text-xs text-muted-foreground">5-7 essential security tests</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="advanced">
+                    <div className="flex flex-col items-start">
+                      <span>Advanced Scan</span>
+                      <span className="text-xs text-muted-foreground">12-15 comprehensive security tests</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex items-center space-x-2">
@@ -970,137 +827,12 @@ export const CurlTester = () => {
             
             <div className="grid gap-4">
               {testResults.map((result) => (
-                <Card key={result.id} className="bg-gradient-card border-primary/20">
-                  <CardHeader>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          {getStatusIcon(result.status)}
-                          <h3 className="text-lg font-semibold">{result.name}</h3>
-                          <Badge variant={result.status === 'failed' ? 'destructive' : result.status === 'warning' ? 'secondary' : 'default'}>
-                            {result.status}
-                          </Badge>
-                        </div>
-                        <p className="text-muted-foreground">{result.description}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyTestCurl(result.request)}
-                          className="flex items-center gap-2"
-                        >
-                          <Copy className="w-4 h-4" />
-                          Copy cURL
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleResultExpanded(result.id)}
-                          className="flex items-center gap-2"
-                        >
-                          {expandedResults.has(result.id) ? (
-                            <ChevronUp className="w-4 h-4" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4" />
-                          )}
-                          Details
-                        </Button>
-                        <Badge variant={getSeverityColor(result.severity) as any}>
-                          {result.severity}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  
-                  <Collapsible open={expandedResults.has(result.id)}>
-                    <CollapsibleContent>
-                      <CardContent className="space-y-4 border-t">
-                        {/* Test Details */}
-                        <div className="space-y-2">
-                          <h4 className="font-semibold text-sm">Test Details:</h4>
-                          <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                            {result.details.map((detail, index) => (
-                              <li key={index}>{detail}</li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        {/* Request Details */}
-                        <div className="space-y-2">
-                          <h4 className="font-semibold text-sm">Request Details:</h4>
-                          <div className="p-3 rounded-lg bg-muted/30 border">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Method & URL</p>
-                                <p className="font-mono text-sm">{result.request.method} {result.request.url}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Headers</p>
-                                <div className="space-y-1">
-                                  {Object.entries(result.request.headers).map(([key, value]) => (
-                                    <p key={key} className="font-mono text-xs">
-                                      <span className="text-muted-foreground">{key}:</span> {String(value)}
-                                    </p>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                            {result.request.body && (
-                              <div className="mt-3">
-                                <p className="text-xs text-muted-foreground mb-1">Request Body</p>
-                                <pre className="text-xs font-mono bg-background/50 p-2 rounded border overflow-auto max-h-32">
-                                  {typeof result.request.body === 'string' 
-                                    ? result.request.body 
-                                    : JSON.stringify(result.request.body, null, 2)}
-                                </pre>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Response Details */}
-                        <div className="space-y-2">
-                          <h4 className="font-semibold text-sm">Response Details:</h4>
-                          <div className="p-3 rounded-lg bg-muted/30 border">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Status</p>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant={result.response.status >= 400 ? "destructive" : "default"}>
-                                    {result.response.status}
-                                  </Badge>
-                                  <span className="text-sm">{result.response.statusText}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Response time: {result.response.time}ms
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Response Headers</p>
-                                <div className="space-y-1">
-                                  {Object.entries(result.response.headers).map(([key, value]) => (
-                                    <p key={key} className="font-mono text-xs">
-                                      <span className="text-muted-foreground">{key}:</span> {String(value)}
-                                    </p>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground mb-1">Response Body</p>
-                              <pre className="text-xs font-mono bg-background/50 p-2 rounded border overflow-auto max-h-32">
-                                {typeof result.response.body === 'string' 
-                                  ? result.response.body 
-                                  : JSON.stringify(result.response.body, null, 2)}
-                              </pre>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </Card>
+                <TestResultCard
+                  key={result.id}
+                  result={result}
+                  isExpanded={expandedResults.has(result.id)}
+                  onToggleExpanded={toggleResultExpanded}
+                />
               ))}
             </div>
           </div>
