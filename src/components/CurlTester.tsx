@@ -277,32 +277,36 @@ export const CurlTester = () => {
   const updateCurlFromHeaders = () => {
     if (!parsedCurl) return;
     
+    // Get all current headers
     const allHeaders = { ...parsedCurl.headers, ...editableHeaders };
-    let updatedCurl = curlCommand;
     
-    // Remove existing header lines
-    updatedCurl = updatedCurl.replace(/-H\s+["'][^"']*["']/g, '');
-    updatedCurl = updatedCurl.replace(/--header\s+["'][^"']*["']/g, '');
+    // Rebuild the curl command with updated headers
+    let updatedCurl = `curl -X ${parsedCurl.method} '${parsedCurl.url}'`;
     
     // Add all headers
-    const headerLines = Object.entries(allHeaders)
-      .filter(([, value]) => value.trim() !== '')
-      .map(([key, value]) => `-H "${key}: ${value}"`)
-      .join(' \\\n  ');
+    const validHeaders = Object.entries(allHeaders)
+      .filter(([key, value]) => key.trim() !== '' && value.trim() !== '');
     
-    if (headerLines) {
-      // Insert headers after method or before data
-      const methodMatch = updatedCurl.match(/-X\s+[A-Z]+/i);
-      if (methodMatch) {
-        const insertIndex = updatedCurl.indexOf(methodMatch[0]) + methodMatch[0].length;
-        updatedCurl = updatedCurl.slice(0, insertIndex) + ' \\\n  ' + headerLines + updatedCurl.slice(insertIndex);
-      } else {
-        // Insert at the beginning after curl command
-        updatedCurl = updatedCurl.replace(/^curl\s+/, `curl \\\n  ${headerLines} \\\n  `);
-      }
+    if (validHeaders.length > 0) {
+      const headerLines = validHeaders
+        .map(([key, value]) => `  -H '${key}: ${value}'`)
+        .join(' \\\n');
+      
+      updatedCurl += ' \\\n' + headerLines;
     }
     
-    setCurlCommand(updatedCurl.replace(/\s+/g, ' ').replace(/\\\s+/g, ' \\\n  '));
+    // Add body if present
+    if (parsedCurl.body) {
+      const bodyStr = typeof parsedCurl.body === 'string' ? parsedCurl.body : JSON.stringify(parsedCurl.body);
+      updatedCurl += ` \\\n  -d '${bodyStr}'`;
+    }
+    
+    setCurlCommand(updatedCurl);
+    
+    toast({
+      title: "cURL Updated",
+      description: "The cURL command has been updated with your changes",
+    });
   };
 
   const addNewHeader = () => {
