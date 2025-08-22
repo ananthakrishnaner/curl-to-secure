@@ -149,10 +149,10 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
   pdf.setTextColor(0, 0, 0);
   yPos += 20;
   
-  // Individual test results
+  // Individual test results in table format
   testResults.forEach((result, index) => {
     // Check if we need a new page
-    if (yPos > 260) {
+    if (yPos > 220) {
       pdf.addPage();
       yPos = 20;
     }
@@ -172,48 +172,45 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
     pdf.setTextColor(0, 0, 0);
     pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
-    pdf.text(`${index + 1}. ${result.name}`, 25, yPos + 2);
+    pdf.text(`Test ${index + 1}: ${result.name}`, 25, yPos + 2);
     
-    // Status and severity
+    // Status and severity in header
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
-    pdf.text(`Status: ${result.status.toUpperCase()}`, 25, yPos + 7);
-    pdf.text(`Severity: ${result.severity}`, 80, yPos + 7);
-    pdf.text(`Response Time: ${result.response.time}ms`, 130, yPos + 7);
+    pdf.text(`${result.status.toUpperCase()} | ${result.severity} | ${result.response.time}ms`, 25, yPos + 7);
     yPos += 15;
     
     // Description
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
     const descLines = pdf.splitTextToSize(result.description, 160);
     pdf.text(descLines, 25, yPos);
-    yPos += descLines.length * 4 + 3;
+    yPos += descLines.length * 4 + 5;
     
-    // Request details
+    // Create test details table
+    const tableStartY = yPos;
+    const tableWidth = 170;
+    const colWidth = tableWidth / 2;
+    
+    // Table headers
+    pdf.setFillColor(240, 240, 240);
+    pdf.rect(15, yPos, tableWidth, 8, 'F');
     pdf.setFont('helvetica', 'bold');
-    pdf.text('Request:', 25, yPos);
-    pdf.setFont('helvetica', 'normal');
-    yPos += 4;
+    pdf.setFontSize(10);
+    pdf.text('REQUEST', 20, yPos + 5);
+    pdf.text('RESPONSE', 20 + colWidth, yPos + 5);
+    yPos += 10;
     
-    pdf.text(`  Method: ${result.request.method}`, 25, yPos);
-    yPos += 4;
+    // Calculate content heights for both columns
+    const requestContent = [];
+    const responseContent = [];
     
-    const reqUrlLines = pdf.splitTextToSize(`  URL: ${result.request.url}`, 160);
-    pdf.text(reqUrlLines, 25, yPos);
-    yPos += reqUrlLines.length * 4;
+    // Request content
+    requestContent.push(`Method: ${result.request.method}`);
+    requestContent.push(`URL: ${result.request.url}`);
     
-    // Request headers
     if (result.request.headers && Object.keys(result.request.headers).length > 0) {
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('  Request Headers:', 25, yPos);
-      pdf.setFont('helvetica', 'normal');
-      yPos += 4;
-      
+      requestContent.push('Headers:');
       Object.entries(result.request.headers).forEach(([key, value]) => {
-        const headerText = `    ${key}: ${value}`;
-        const headerLines = pdf.splitTextToSize(headerText, 150);
-        pdf.text(headerLines, 25, yPos);
-        yPos += headerLines.length * 4;
+        requestContent.push(`  ${key}: ${value}`);
       });
     }
     
@@ -221,38 +218,18 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
       const bodyText = typeof result.request.body === 'string' 
         ? result.request.body 
         : JSON.stringify(result.request.body, null, 2);
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('  Request Body:', 25, yPos);
-      pdf.setFont('helvetica', 'normal');
-      yPos += 4;
-      
-      const bodyLines = pdf.splitTextToSize(bodyText, 160);
-      pdf.text(bodyLines, 30, yPos);
-      yPos += bodyLines.length * 4;
+      requestContent.push('Body:');
+      const bodyLines = bodyText.split('\n');
+      requestContent.push(...bodyLines);
     }
     
-    // Response details
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Response:', 25, yPos);
-    pdf.setFont('helvetica', 'normal');
-    yPos += 4;
+    // Response content
+    responseContent.push(`Status: ${result.response.status} ${result.response.statusText}`);
     
-    pdf.text(`  Status: ${result.response.status} ${result.response.statusText}`, 25, yPos);
-    yPos += 4;
-    
-    // Response headers
     if (result.response.headers && Object.keys(result.response.headers).length > 0) {
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('  Response Headers:', 25, yPos);
-      pdf.setFont('helvetica', 'normal');
-      yPos += 4;
-      
+      responseContent.push('Headers:');
       Object.entries(result.response.headers).forEach(([key, value]) => {
-        const headerText = `    ${key}: ${value}`;
-        const headerLines = pdf.splitTextToSize(headerText, 150);
-        pdf.text(headerLines, 25, yPos);
-        yPos += headerLines.length * 4;
+        responseContent.push(`  ${key}: ${value}`);
       });
     }
     
@@ -260,32 +237,58 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
       const respBodyText = typeof result.response.body === 'string' 
         ? result.response.body 
         : JSON.stringify(result.response.body, null, 2);
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('  Response Body:', 25, yPos);
-      pdf.setFont('helvetica', 'normal');
-      yPos += 4;
-      
-      const respBodyLines = pdf.splitTextToSize(respBodyText, 160);
-      pdf.text(respBodyLines, 30, yPos);
-      yPos += respBodyLines.length * 4;
+      responseContent.push('Body:');
+      const bodyLines = respBodyText.split('\n');
+      responseContent.push(...bodyLines);
     }
     
-    // Details
+    // Calculate table height
+    const maxLines = Math.max(requestContent.length, responseContent.length);
+    const tableHeight = maxLines * 4 + 5;
+    
+    // Draw table border
+    pdf.setDrawColor(200, 200, 200);
+    pdf.rect(15, tableStartY, tableWidth, tableHeight + 8);
+    pdf.line(15 + colWidth, tableStartY, 15 + colWidth, tableStartY + tableHeight + 8);
+    
+    // Fill table content
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    
+    let currentY = yPos;
+    
+    // Request column
+    requestContent.forEach((line, i) => {
+      const lineY = currentY + (i * 4);
+      const processedLine = pdf.splitTextToSize(line, colWidth - 10);
+      pdf.text(processedLine, 20, lineY);
+    });
+    
+    // Response column
+    responseContent.forEach((line, i) => {
+      const lineY = currentY + (i * 4);
+      const processedLine = pdf.splitTextToSize(line, colWidth - 10);
+      pdf.text(processedLine, 20 + colWidth + 5, lineY);
+    });
+    
+    yPos += tableHeight + 10;
+    
+    // Details section below table
     if (result.details && result.details.length > 0) {
       pdf.setFont('helvetica', 'bold');
-      pdf.text('Details:', 25, yPos);
+      pdf.setFontSize(9);
+      pdf.text('Test Details:', 25, yPos);
       pdf.setFont('helvetica', 'normal');
       yPos += 4;
       
       result.details.forEach(detail => {
-        const detailLines = pdf.splitTextToSize(`  • ${detail}`, 160);
+        const detailLines = pdf.splitTextToSize(`• ${detail}`, 160);
         pdf.text(detailLines, 25, yPos);
         yPos += detailLines.length * 4;
       });
     }
     
-    yPos += 8; // Space between tests
+    yPos += 10; // Space between tests
   });
   
   // Footer on each page
@@ -478,15 +481,16 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
     new Paragraph({ children: [new TextRun({ text: "" })] })
   );
 
-  // Individual test results
+  // Individual test results in table format
   testResults.forEach((result, index) => {
     children.push(
       new Paragraph({
         children: [
           new TextRun({
-            text: `${index + 1}. ${result.name}`,
+            text: `Test ${index + 1}: ${result.name}`,
             bold: true,
             size: 20,
+            color: "48B773",
           }),
         ],
       }),
@@ -494,7 +498,7 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
         children: [
           new TextRun({
             text: `Status: ${result.status.toUpperCase()} | Severity: ${result.severity} | Response Time: ${result.response.time}ms`,
-            size: 18,
+            size: 16,
             color: result.status === 'failed' ? 'DC2626' : result.status === 'warning' ? 'F59E0B' : '22C55E',
           }),
         ],
@@ -503,181 +507,108 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
         children: [
           new TextRun({
             text: `Description: ${result.description}`,
-            size: 16,
+            size: 14,
           }),
         ],
-      })
+      }),
+      new Paragraph({ children: [new TextRun({ text: "" })] })
     );
 
-    // Request details
+    // Table header
     children.push(
       new Paragraph({
         children: [
           new TextRun({
-            text: "Request:",
+            text: "REQUEST DETAILS",
             bold: true,
-            size: 16,
-          }),
-        ],
-      }),
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: `  Method: ${result.request.method}`,
             size: 14,
+            color: "48B773",
           }),
-        ],
-      }),
-      new Paragraph({
-        children: [
           new TextRun({
-            text: `  URL: ${result.request.url}`,
+            text: "\t\t\t\tRESPONSE DETAILS",
+            bold: true,
             size: 14,
+            color: "48B773",
           }),
         ],
       })
     );
 
-    // Request headers
+    // Request and Response content side by side
+    const requestDetails = [];
+    const responseDetails = [];
+
+    // Build request details
+    requestDetails.push(`Method: ${result.request.method}`);
+    requestDetails.push(`URL: ${result.request.url}`);
+    
     if (result.request.headers && Object.keys(result.request.headers).length > 0) {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: "  Headers:",
-              bold: true,
-              size: 14,
-            }),
-          ],
-        })
-      );
-      
+      requestDetails.push("Headers:");
       Object.entries(result.request.headers).forEach(([key, value]) => {
-        children.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `    ${key}: ${value}`,
-                size: 12,
-              }),
-            ],
-          })
-        );
+        requestDetails.push(`  ${key}: ${value}`);
       });
     }
 
-    // Request body
     if (result.request.body) {
       const bodyText = typeof result.request.body === 'string' 
         ? result.request.body 
         : JSON.stringify(result.request.body, null, 2);
-      
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: "  Request Body:",
-              bold: true,
-              size: 14,
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: bodyText,
-              size: 12,
-            }),
-          ],
-        })
-      );
+      requestDetails.push("Request Body:");
+      requestDetails.push(bodyText);
     }
 
-    // Response details
-    children.push(
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: "Response:",
-            bold: true,
-            size: 16,
-          }),
-        ],
-      }),
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: `  Status: ${result.response.status} ${result.response.statusText}`,
-            size: 14,
-          }),
-        ],
-      })
-    );
-
-    // Response headers
+    // Build response details
+    responseDetails.push(`Status: ${result.response.status} ${result.response.statusText}`);
+    
     if (result.response.headers && Object.keys(result.response.headers).length > 0) {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: "  Response Headers:",
-              bold: true,
-              size: 14,
-            }),
-          ],
-        })
-      );
-      
+      responseDetails.push("Headers:");
       Object.entries(result.response.headers).forEach(([key, value]) => {
-        children.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `    ${key}: ${value}`,
-                size: 12,
-              }),
-            ],
-          })
-        );
+        responseDetails.push(`  ${key}: ${value}`);
       });
     }
 
-    // Response body
     if (result.response.body) {
       const respBodyText = typeof result.response.body === 'string' 
         ? result.response.body 
         : JSON.stringify(result.response.body, null, 2);
+      responseDetails.push("Response Body:");
+      responseDetails.push(respBodyText);
+    }
+
+    // Create table-like structure
+    const maxLines = Math.max(requestDetails.length, responseDetails.length);
+    for (let i = 0; i < maxLines; i++) {
+      const requestLine = requestDetails[i] || "";
+      const responseLine = responseDetails[i] || "";
       
       children.push(
         new Paragraph({
           children: [
             new TextRun({
-              text: "  Response Body:",
-              bold: true,
-              size: 14,
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: respBodyText,
+              text: requestLine.padEnd(50),
               size: 12,
+              font: "Courier New",
+            }),
+            new TextRun({
+              text: `\t${responseLine}`,
+              size: 12,
+              font: "Courier New",
             }),
           ],
         })
       );
     }
 
-    // Details
+    // Details section
     if (result.details && result.details.length > 0) {
       children.push(
+        new Paragraph({ children: [new TextRun({ text: "" })] }),
         new Paragraph({
           children: [
             new TextRun({
-              text: "Details:",
+              text: "Test Details:",
               bold: true,
-              size: 16,
+              size: 14,
             }),
           ],
         })
@@ -688,8 +619,8 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
           new Paragraph({
             children: [
               new TextRun({
-                text: `  • ${detail}`,
-                size: 14,
+                text: `• ${detail}`,
+                size: 12,
               }),
             ],
           })
@@ -697,7 +628,11 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
       });
     }
 
-    children.push(new Paragraph({ children: [new TextRun({ text: "" })] }));
+    children.push(
+      new Paragraph({ children: [new TextRun({ text: "" })] }),
+      new Paragraph({ children: [new TextRun({ text: "─".repeat(80) })] }),
+      new Paragraph({ children: [new TextRun({ text: "" })] })
+    );
   });
 
   const doc = new Document({
