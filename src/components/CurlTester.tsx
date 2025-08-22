@@ -658,13 +658,51 @@ export const CurlTester = () => {
 
             {/* Vulnerability Selection */}
             <div className="bg-muted/20 p-4 rounded-lg border">
-              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                Select Vulnerabilities to Test
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Select Vulnerabilities to Test
+                </h3>
+                <Badge variant="secondary" className="text-xs">
+                  {selectedVulnerabilities.size} selected
+                </Badge>
+              </div>
+              
+              {/* Quick selection buttons */}
+              <div className="flex gap-2 mb-4">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedVulnerabilities(new Set(vulnerabilityOptions.map(v => v.id)))}
+                  className="text-xs"
+                >
+                  Select All
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedVulnerabilities(new Set())}
+                  className="text-xs"
+                >
+                  Clear All
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedVulnerabilities(new Set(['bola', 'auth', 'input_validation', 'headers']))}
+                  className="text-xs"
+                >
+                  Essential Only
+                </Button>
+              </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {vulnerabilityOptions.map((vuln) => (
-                  <div key={vuln.id} className="flex items-center space-x-2">
+                  <div key={vuln.id} className={`flex items-center space-x-2 p-2 rounded-md border transition-all duration-200 ${
+                    selectedVulnerabilities.has(vuln.id) 
+                      ? 'bg-primary/10 border-primary/30' 
+                      : 'bg-background/50 border-border/50 hover:border-border'
+                  }`}>
                     <Checkbox
                       id={vuln.id}
                       checked={selectedVulnerabilities.has(vuln.id)}
@@ -678,7 +716,7 @@ export const CurlTester = () => {
                         setSelectedVulnerabilities(newSelected);
                       }}
                     />
-                    <label htmlFor={vuln.id} className="text-sm font-medium cursor-pointer">
+                    <label htmlFor={vuln.id} className="text-sm font-medium cursor-pointer flex-1">
                       {vuln.name}
                     </label>
                     <Badge variant="outline" className="text-xs">
@@ -687,33 +725,88 @@ export const CurlTester = () => {
                   </div>
                 ))}
               </div>
+              
+              {/* Selected vulnerabilities summary */}
+              {selectedVulnerabilities.size > 0 && (
+                <div className="mt-3 p-2 bg-primary/5 rounded-md border border-primary/20">
+                  <p className="text-xs text-muted-foreground mb-1">Selected tests:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {Array.from(selectedVulnerabilities).map(vulnId => {
+                      const vuln = vulnerabilityOptions.find(v => v.id === vulnId);
+                      return vuln ? (
+                        <Badge key={vulnId} variant="secondary" className="text-xs">
+                          {vuln.name.split(' ')[0]}
+                        </Badge>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Scan Type Selection */}
             <div className="bg-muted/20 p-4 rounded-lg border">
-              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                Scan Type
-              </h3>
-              <Select value={scanType} onValueChange={(value: 'basic' | 'advanced') => setScanType(value)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="basic">
-                    <div className="flex flex-col items-start">
-                      <span>Basic Scan</span>
-                      <span className="text-xs text-muted-foreground">5-7 essential security tests</span>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Scan Type
+                </h3>
+                <Badge variant={scanType === 'advanced' ? 'default' : 'secondary'} className="text-xs">
+                  {scanType.charAt(0).toUpperCase() + scanType.slice(1)}
+                </Badge>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <div 
+                  className={`p-3 rounded-md border cursor-pointer transition-all duration-200 ${
+                    scanType === 'basic' 
+                      ? 'bg-primary/10 border-primary ring-2 ring-primary/20' 
+                      : 'bg-background/50 border-border hover:border-border/80'
+                  }`}
+                  onClick={() => setScanType('basic')}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-medium text-sm">Basic Scan</div>
+                      <div className="text-xs text-muted-foreground mt-1">5-7 essential security tests</div>
+                      <div className="text-xs text-muted-foreground">Faster execution</div>
                     </div>
-                  </SelectItem>
-                  <SelectItem value="advanced">
-                    <div className="flex flex-col items-start">
-                      <span>Advanced Scan</span>
-                      <span className="text-xs text-muted-foreground">12-15 comprehensive security tests</span>
+                    <div className={`w-3 h-3 rounded-full border-2 ${
+                      scanType === 'basic' ? 'bg-primary border-primary' : 'border-border'
+                    }`} />
+                  </div>
+                </div>
+                
+                <div 
+                  className={`p-3 rounded-md border cursor-pointer transition-all duration-200 ${
+                    scanType === 'advanced' 
+                      ? 'bg-primary/10 border-primary ring-2 ring-primary/20' 
+                      : 'bg-background/50 border-border hover:border-border/80'
+                  }`}
+                  onClick={() => setScanType('advanced')}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-medium text-sm">Advanced Scan</div>
+                      <div className="text-xs text-muted-foreground mt-1">12-15 comprehensive tests</div>
+                      <div className="text-xs text-muted-foreground">Thorough analysis</div>
                     </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                    <div className={`w-3 h-3 rounded-full border-2 ${
+                      scanType === 'advanced' ? 'bg-primary border-primary' : 'border-border'
+                    }`} />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Scan type info */}
+              <div className="p-2 bg-muted/30 rounded-md">
+                <p className="text-xs text-muted-foreground">
+                  {scanType === 'basic' 
+                    ? 'Basic scan focuses on common vulnerabilities and executes faster.' 
+                    : 'Advanced scan includes comprehensive testing with more payloads and edge cases.'
+                  }
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center space-x-2">
