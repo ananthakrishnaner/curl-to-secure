@@ -666,12 +666,12 @@ export const CurlTester = () => {
                       placeholder="Header name"
                       className="flex-1 font-mono text-sm"
                     />
-                    <span className="text-muted-foreground">:</span>
+                    <span className="text-muted-foreground font-mono">:</span>
                     <Input
                       value={newHeaderValue}
                       onChange={(e) => setNewHeaderValue(e.target.value)}
                       placeholder="Header value"
-                      className="flex-2 font-mono text-sm"
+                      className="flex-1 font-mono text-sm"
                       onKeyPress={(e) => e.key === 'Enter' && addNewHeader()}
                     />
                     <Button
