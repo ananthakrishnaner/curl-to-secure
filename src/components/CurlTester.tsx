@@ -343,6 +343,119 @@ export const CurlTester = () => {
     }));
   };
 
+  const makeHttpRequest = async (request: any): Promise<any> => {
+    const startTime = Date.now();
+    
+    try {
+      const fetchOptions: RequestInit = {
+        method: request.method,
+        headers: request.headers,
+        mode: 'cors'
+      };
+      
+      if (request.body && (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH')) {
+        fetchOptions.body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
+      }
+      
+      const response = await fetch(request.url, fetchOptions);
+      const endTime = Date.now();
+      
+      let responseBody;
+      const contentType = response.headers.get('Content-Type') || '';
+      
+      if (contentType.includes('application/json')) {
+        try {
+          responseBody = await response.json();
+        } catch {
+          responseBody = await response.text();
+        }
+      } else {
+        responseBody = await response.text();
+      }
+      
+      // Convert headers to object
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      
+      return {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        body: responseBody,
+        time: endTime - startTime
+      };
+    } catch (error) {
+      const endTime = Date.now();
+      return {
+        status: 0,
+        statusText: 'Network Error',
+        headers: {},
+        body: { error: error instanceof Error ? error.message : 'Unknown error' },
+        time: endTime - startTime
+      };
+    }
+  };
+
+  const analyzeTestCase = (originalResponse: any, testResponse: any, testName: string): 'passed' | 'failed' | 'warning' => {
+    // Authentication tests
+    if (testName.includes('Authentication')) {
+      if (testResponse.status === 401 || testResponse.status === 403) {
+        return 'passed'; // Good - authentication is working
+      }
+      return 'failed'; // Bad - authentication bypass possible
+    }
+    
+    // BOLA tests
+    if (testName.includes('BOLA') || testName.includes('Authorization')) {
+      if (testResponse.status === 403 || testResponse.status === 404) {
+        return 'passed'; // Good - authorization is working
+      }
+      if (testResponse.status === 200) {
+        return 'failed'; // Bad - potential BOLA vulnerability
+      }
+      return 'warning';
+    }
+    
+    // Rate limiting tests
+    if (testName.includes('Rate Limiting')) {
+      if (testResponse.status === 429) {
+        return 'passed'; // Good - rate limiting is working
+      }
+      return 'failed'; // Bad - no rate limiting
+    }
+    
+    // Input validation tests
+    if (testName.includes('Input Validation') || testName.includes('injection')) {
+      if (testResponse.status === 400 || testResponse.status === 422) {
+        return 'passed'; // Good - input validation is working
+      }
+      if (testResponse.status === 200) {
+        return 'failed'; // Bad - potential injection vulnerability
+      }
+      return 'warning';
+    }
+    
+    // Security headers
+    if (testName.includes('Headers')) {
+      const hasSecurityHeaders = Object.keys(testResponse.headers).some(header => 
+        ['x-frame-options', 'content-security-policy', 'x-content-type-options', 'strict-transport-security']
+          .includes(header.toLowerCase())
+      );
+      return hasSecurityHeaders ? 'passed' : 'warning';
+    }
+    
+    // Default analysis
+    if (testResponse.status >= 400) {
+      return 'passed'; // Server rejected malicious request
+    }
+    if (testResponse.status === 200) {
+      return 'warning'; // Request succeeded - might be vulnerable
+    }
+    return 'warning';
+  };
+
   const handleAnalyzeCurl = async () => {
     if (!curlCommand.trim()) {
       toast({
@@ -370,52 +483,73 @@ export const CurlTester = () => {
     }
 
     setParsedCurl(parsed);
-    
-    // Initialize editable headers with parsed headers
     setEditableHeaders(parsed.headers);
     
-    // Store original request and simulate response
-    setOriginalRequest({
-      method: parsed.method,
-      url: parsed.url,
-      headers: parsed.headers,
-      body: parsed.body,
-      sslVerify: sslVerify
-    });
-    
-    setOriginalResponse({
-      status: 200,
-      statusText: 'OK',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Response-Time': '125ms',
-        'Server': 'nginx/1.18.0'
-      },
-      body: { success: true, message: 'Original request successful' },
-      time: 125
-    });
-    
-    // Generate test payloads based on scan type and selected vulnerabilities
-    const testPayloads = generateTestPayloads(parsed, scanType, selectedVulnerabilities);
-    
-    // Simulate progressive testing
-    for (let i = 0; i < testPayloads.length; i++) {
-      setCurrentTest(`Testing ${testPayloads[i].name}...`);
-      setAnalysisProgress((i + 1) / testPayloads.length * 100);
-      await new Promise(resolve => setTimeout(resolve, 800)); // Faster for more tests
+    try {
+      // First, make the original request
+      setCurrentTest("Making original request...");
+      setAnalysisProgress(5);
+      
+      const originalRequest = {
+        method: parsed.method,
+        url: parsed.url,
+        headers: parsed.headers,
+        body: parsed.body,
+        sslVerify: sslVerify
+      };
+      
+      const originalResponse = await makeHttpRequest(originalRequest);
+      setOriginalRequest(originalRequest);
+      setOriginalResponse(originalResponse);
+      
+      // Generate test payloads based on scan type and selected vulnerabilities
+      const testTemplates = generateTestPayloads(parsed, scanType, selectedVulnerabilities);
+      const actualTestResults: TestResult[] = [];
+      
+      // Execute each test
+      for (let i = 0; i < testTemplates.length; i++) {
+        const testTemplate = testTemplates[i];
+        setCurrentTest(`Testing ${testTemplate.name}...`);
+        setAnalysisProgress(((i + 1) / testTemplates.length) * 95 + 5);
+        
+        // Make the actual HTTP request for this test
+        const testResponse = await makeHttpRequest(testTemplate.request);
+        
+        // Analyze the response to determine if it passed/failed
+        const status = analyzeTestCase(originalResponse, testResponse, testTemplate.name);
+        
+        const actualResult: TestResult = {
+          ...testTemplate,
+          status,
+          response: testResponse
+        };
+        
+        actualTestResults.push(actualResult);
+        await new Promise(resolve => setTimeout(resolve, 300)); // Small delay between requests
+      }
+      
+      setTestResults(actualTestResults);
+      setAnalysisProgress(100);
+      
+      const failedTests = actualTestResults.filter(r => r.status === 'failed').length;
+      const warningTests = actualTestResults.filter(r => r.status === 'warning').length;
+      const passedTests = actualTestResults.filter(r => r.status === 'passed').length;
+      
+      toast({
+        title: "Analysis Complete",
+        description: `${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan: ${passedTests} passed, ${failedTests} failed, ${warningTests} warnings`,
+      });
+      
+    } catch (error) {
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsAnalyzing(false);
+      setCurrentTest("");
     }
-    
-    setTestResults(testPayloads);
-    setIsAnalyzing(false);
-    setCurrentTest("");
-    
-    const failedTests = testPayloads.filter(r => r.status === 'failed').length;
-    const warningTests = testPayloads.filter(r => r.status === 'warning').length;
-    
-    toast({
-      title: "Analysis Complete",
-      description: `${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan: ${failedTests} failed, ${warningTests} warnings`,
-    });
   };
 
   const copyExample = () => {
