@@ -72,7 +72,13 @@ export const CurlTester = () => {
     { id: 'rate_limit', name: 'Rate Limiting Testing', category: 'Resource Management' },
     { id: 'input_validation', name: 'Input Validation Testing', category: 'Input Validation' },
     { id: 'ssrf', name: 'Server Side Request Forgery (SSRF)', category: 'Network Security' },
-    { id: 'headers', name: 'Security Headers Check', category: 'Configuration' }
+    { id: 'headers', name: 'Security Headers Check', category: 'Configuration' },
+    { id: 'mass_assignment', name: 'Mass Assignment Testing', category: 'Input Validation' },
+    { id: 'jwt_manipulation', name: 'JWT Token Manipulation', category: 'Authentication' },
+    { id: 'nosql_injection', name: 'NoSQL Injection Testing', category: 'Input Validation' },
+    { id: 'xml_injection', name: 'XML External Entity (XXE) Testing', category: 'Input Validation' },
+    { id: 'cors_misconfiguration', name: 'CORS Misconfiguration Testing', category: 'Configuration' },
+    { id: 'http_method_override', name: 'HTTP Method Override Testing', category: 'Configuration' }
   ];
 
   const exampleCurl = `curl -X POST https://api.example.com/users \\
@@ -389,8 +395,8 @@ export const CurlTester = () => {
       time: 125
     });
     
-    // Generate test payloads based on scan type
-    const testPayloads = generateTestPayloads(parsed, scanType);
+    // Generate test payloads based on scan type and selected vulnerabilities
+    const testPayloads = generateTestPayloads(parsed, scanType, selectedVulnerabilities);
     
     // Simulate progressive testing
     for (let i = 0; i < testPayloads.length; i++) {

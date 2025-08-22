@@ -28,7 +28,7 @@ interface TestResult {
   };
 }
 
-export const generateTestPayloads = (parsed: ParsedCurl, scanType: 'basic' | 'advanced'): TestResult[] => {
+export const generateTestPayloads = (parsed: ParsedCurl, scanType: 'basic' | 'advanced', selectedVulnerabilities?: Set<string>): TestResult[] => {
   const basicTests: TestResult[] = [
     {
       id: 'auth_missing',
@@ -308,5 +308,32 @@ export const generateTestPayloads = (parsed: ParsedCurl, scanType: 'basic' | 'ad
     }
   ];
 
-  return scanType === 'advanced' ? advancedTests : basicTests;
+  const allTests = scanType === 'advanced' ? advancedTests : basicTests;
+  
+  // Filter tests based on selected vulnerabilities if provided
+  if (selectedVulnerabilities && selectedVulnerabilities.size > 0) {
+    return allTests.filter(test => {
+      // Map test IDs to vulnerability categories
+      const testVulnMap: Record<string, string> = {
+        'auth_missing': 'auth',
+        'bola_test': 'bola', 
+        'input_validation': 'input_validation',
+        'rate_limiting': 'rate_limit',
+        'headers_security': 'headers',
+        'bopla_test': 'bopla',
+        'ssrf_test': 'ssrf',
+        'mass_assignment': 'mass_assignment',
+        'jwt_manipulation': 'jwt_manipulation',
+        'nosql_injection': 'nosql_injection',
+        'xml_injection': 'xml_injection',
+        'cors_misconfiguration': 'cors_misconfiguration',
+        'http_method_override': 'http_method_override'
+      };
+      
+      const vulnCategory = testVulnMap[test.id];
+      return vulnCategory ? selectedVulnerabilities.has(vulnCategory) : true;
+    });
+  }
+  
+  return allTests;
 };
