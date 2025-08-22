@@ -205,9 +205,15 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
     if (result.request.body) {
       const bodyText = typeof result.request.body === 'string' 
         ? result.request.body 
-        : JSON.stringify(result.request.body);
-      const bodyLines = pdf.splitTextToSize(`  Body: ${bodyText}`, 160);
-      pdf.text(bodyLines, 25, yPos);
+        : JSON.stringify(result.request.body, null, 2);
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('  Request Body:', 25, yPos);
+      pdf.setFont('helvetica', 'normal');
+      yPos += 4;
+      
+      const bodyLines = pdf.splitTextToSize(bodyText, 160);
+      pdf.text(bodyLines, 30, yPos);
       yPos += bodyLines.length * 4;
     }
     
@@ -223,9 +229,15 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
     if (result.response.body) {
       const respBodyText = typeof result.response.body === 'string' 
         ? result.response.body 
-        : JSON.stringify(result.response.body);
-      const respBodyLines = pdf.splitTextToSize(`  Body: ${respBodyText.substring(0, 500)}${respBodyText.length > 500 ? '...' : ''}`, 160);
-      pdf.text(respBodyLines, 25, yPos);
+        : JSON.stringify(result.response.body, null, 2);
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('  Response Body:', 25, yPos);
+      pdf.setFont('helvetica', 'normal');
+      yPos += 4;
+      
+      const respBodyLines = pdf.splitTextToSize(respBodyText, 160);
+      pdf.text(respBodyLines, 30, yPos);
       yPos += respBodyLines.length * 4;
     }
     
@@ -262,85 +274,406 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
 };
 
 export const exportToDocx = async (testResults: TestResult[], originalRequest: any, originalResponse: any) => {
+  const reportDate = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const failedTests = testResults.filter(r => r.status === 'failed').length;
+  const warningTests = testResults.filter(r => r.status === 'warning').length;
+  const passedTests = testResults.filter(r => r.status === 'passed').length;
+
+  const children = [
+    // Title
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: "API Security Test Results",
+          bold: true,
+          size: 32,
+          color: "48B773",
+        }),
+      ],
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: "Comprehensive Security Analysis Report",
+          size: 20,
+          color: "6B7280",
+        }),
+      ],
+    }),
+    new Paragraph({ children: [new TextRun({ text: "" })] }),
+
+    // Report Summary
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: "Report Summary",
+          bold: true,
+          size: 24,
+        }),
+      ],
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `Generated: ${reportDate}`,
+          size: 20,
+        }),
+      ],
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `Total Tests Executed: ${testResults.length}`,
+          size: 20,
+        }),
+      ],
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `Failed: ${failedTests} | Warnings: ${warningTests} | Passed: ${passedTests}`,
+          size: 20,
+        }),
+      ],
+    }),
+    new Paragraph({ children: [new TextRun({ text: "" })] }),
+  ];
+
+  // Original Request Section
+  if (originalRequest) {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "Original Request Details",
+            bold: true,
+            size: 22,
+            color: "48B773",
+          }),
+        ],
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Method: ${originalRequest.method || 'GET'}`,
+            size: 18,
+          }),
+        ],
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `URL: ${originalRequest.url || 'N/A'}`,
+            size: 18,
+          }),
+        ],
+      })
+    );
+
+    if (originalRequest.headers && Object.keys(originalRequest.headers).length > 0) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "Headers:",
+              bold: true,
+              size: 18,
+            }),
+          ],
+        })
+      );
+      
+      Object.entries(originalRequest.headers).forEach(([key, value]) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `  ${key}: ${value}`,
+                size: 16,
+              }),
+            ],
+          })
+        );
+      });
+    }
+
+    if (originalRequest.body) {
+      const bodyText = typeof originalRequest.body === 'string' 
+        ? originalRequest.body 
+        : JSON.stringify(originalRequest.body, null, 2);
+      
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "Request Body:",
+              bold: true,
+              size: 18,
+            }),
+          ],
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: bodyText,
+              size: 16,
+            }),
+          ],
+        })
+      );
+    }
+    
+    children.push(new Paragraph({ children: [new TextRun({ text: "" })] }));
+  }
+
+  // Security Test Results Section
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: "Security Test Results",
+          bold: true,
+          size: 22,
+          color: "48B773",
+        }),
+      ],
+    }),
+    new Paragraph({ children: [new TextRun({ text: "" })] })
+  );
+
+  // Individual test results
+  testResults.forEach((result, index) => {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `${index + 1}. ${result.name}`,
+            bold: true,
+            size: 20,
+          }),
+        ],
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Status: ${result.status.toUpperCase()} | Severity: ${result.severity} | Response Time: ${result.response.time}ms`,
+            size: 18,
+            color: result.status === 'failed' ? 'DC2626' : result.status === 'warning' ? 'F59E0B' : '22C55E',
+          }),
+        ],
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Description: ${result.description}`,
+            size: 16,
+          }),
+        ],
+      })
+    );
+
+    // Request details
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "Request:",
+            bold: true,
+            size: 16,
+          }),
+        ],
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `  Method: ${result.request.method}`,
+            size: 14,
+          }),
+        ],
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `  URL: ${result.request.url}`,
+            size: 14,
+          }),
+        ],
+      })
+    );
+
+    // Request headers
+    if (result.request.headers && Object.keys(result.request.headers).length > 0) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "  Headers:",
+              bold: true,
+              size: 14,
+            }),
+          ],
+        })
+      );
+      
+      Object.entries(result.request.headers).forEach(([key, value]) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `    ${key}: ${value}`,
+                size: 12,
+              }),
+            ],
+          })
+        );
+      });
+    }
+
+    // Request body
+    if (result.request.body) {
+      const bodyText = typeof result.request.body === 'string' 
+        ? result.request.body 
+        : JSON.stringify(result.request.body, null, 2);
+      
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "  Request Body:",
+              bold: true,
+              size: 14,
+            }),
+          ],
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: bodyText,
+              size: 12,
+            }),
+          ],
+        })
+      );
+    }
+
+    // Response details
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "Response:",
+            bold: true,
+            size: 16,
+          }),
+        ],
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `  Status: ${result.response.status} ${result.response.statusText}`,
+            size: 14,
+          }),
+        ],
+      })
+    );
+
+    // Response headers
+    if (result.response.headers && Object.keys(result.response.headers).length > 0) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "  Response Headers:",
+              bold: true,
+              size: 14,
+            }),
+          ],
+        })
+      );
+      
+      Object.entries(result.response.headers).forEach(([key, value]) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `    ${key}: ${value}`,
+                size: 12,
+              }),
+            ],
+          })
+        );
+      });
+    }
+
+    // Response body
+    if (result.response.body) {
+      const respBodyText = typeof result.response.body === 'string' 
+        ? result.response.body 
+        : JSON.stringify(result.response.body, null, 2);
+      
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "  Response Body:",
+              bold: true,
+              size: 14,
+            }),
+          ],
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: respBodyText,
+              size: 12,
+            }),
+          ],
+        })
+      );
+    }
+
+    // Details
+    if (result.details && result.details.length > 0) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: "Details:",
+              bold: true,
+              size: 16,
+            }),
+          ],
+        })
+      );
+      
+      result.details.forEach(detail => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `  • ${detail}`,
+                size: 14,
+              }),
+            ],
+          })
+        );
+      });
+    }
+
+    children.push(new Paragraph({ children: [new TextRun({ text: "" })] }));
+  });
+
   const doc = new Document({
     sections: [{
       properties: {},
-      children: [
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: "API Security Test Results",
-              bold: true,
-              size: 32,
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `Generated: ${new Date().toLocaleDateString()}`,
-              size: 20,
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `Total Tests: ${testResults.length}`,
-              size: 20,
-            }),
-          ],
-        }),
-        new Paragraph({
-          children: [new TextRun({ text: "" })],
-        }),
-        ...testResults.flatMap((result, index) => [
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `${index + 1}. ${result.name}`,
-                bold: true,
-                size: 24,
-              }),
-            ],
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `Status: ${result.status} | Severity: ${result.severity}`,
-                size: 20,
-              }),
-            ],
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `Description: ${result.description}`,
-                size: 20,
-              }),
-            ],
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `Details: ${result.details.join(', ')}`,
-                size: 20,
-              }),
-            ],
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `Response: ${result.response.status} ${result.response.statusText} (${result.response.time}ms)`,
-                size: 20,
-              }),
-            ],
-          }),
-          new Paragraph({
-            children: [new TextRun({ text: "" })],
-          }),
-        ]),
-      ],
+      children: children,
     }],
   });
 
