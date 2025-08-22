@@ -60,7 +60,7 @@ export const generateTestPayloads = (parsed: ParsedCurl, scanType: 'basic' | 'ad
     ],
     buffer_overflow: [
       "A".repeat(1000), "A".repeat(5000), "A".repeat(10000),
-      Buffer.from("A".repeat(65536)).toString(), 
+      "A".repeat(65536), 
       "á".repeat(1000), "𝔘𝔫𝔦𝔠𝔬𝔡𝔢".repeat(100)
     ],
     special_chars: [
