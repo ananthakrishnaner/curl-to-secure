@@ -90,14 +90,18 @@ export const CurlTester = () => {
       console.log('🔧 Normalized cURL:', normalizedCurl);
       
       // Extract URL - handle various formats including quoted URLs
-      let urlMatch = normalizedCurl.match(/curl\s+(?:-[^\s]*\s+)*['"]?([^'"\s]+)['"]?/);
+      let urlMatch = normalizedCurl.match(/curl\s+(?:-\w+\s+)*(?:-X\s+\w+\s+)?['"]?([^'"\s]+)['"]?/);
       if (!urlMatch) {
         // Try alternative patterns for URLs with -X before URL
         urlMatch = normalizedCurl.match(/-X\s+[A-Z]+\s+['"]?([^'"\s]+)['"]?/i);
       }
       if (!urlMatch) {
         // Try finding any http/https URL in the command
-        urlMatch = normalizedCurl.match(/['"]?(https?:\/\/[^'"?\s]+)['"]?/);
+        urlMatch = normalizedCurl.match(/['"]?(https?:\/\/[^'"\s]+)['"]?/);
+      }
+      if (!urlMatch) {
+        // Try extracting URL after method
+        urlMatch = normalizedCurl.match(/curl\s+.*?['"]?(https?:\/\/[^'"\s]+)['"]?/);
       }
       
       console.log('🎯 URL matches:', urlMatch);
@@ -130,12 +134,23 @@ export const CurlTester = () => {
       console.log('📝 Header matches:', Array.from(headerMatches).map(m => m[1]));
       
       // Extract body data - handle multiple formats and multiline JSON
-      let bodyMatch = normalizedCurl.match(/-d\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
-                     normalizedCurl.match(/--data\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
-                     normalizedCurl.match(/--data-raw\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
-                     normalizedCurl.match(/--json\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
-                     // Handle unquoted data
-                     normalizedCurl.match(/-d\s+([^-\s][^\s]*(?:\s+[^-][^\s]*)*)/);
+      let bodyMatch = null;
+      
+      // Better body parsing - find the -d or --data flag and capture everything until next flag or end
+      const dataFlagMatch = normalizedCurl.match(/-d\s+(['"`])((?:(?!\1).|\1(?!\s+-))*)\1/);
+      if (dataFlagMatch) {
+        bodyMatch = [dataFlagMatch[0], dataFlagMatch[2]];
+      } else {
+        // Fallback to simpler patterns
+        bodyMatch = 
+          normalizedCurl.match(/-d\s+'([^']+)'/) ||
+          normalizedCurl.match(/-d\s+"([^"]+)"/) ||
+          normalizedCurl.match(/-d\s+`([^`]+)`/) ||
+          normalizedCurl.match(/--data\s+'([^']+)'/) ||
+          normalizedCurl.match(/--data\s+"([^"]+)"/) ||
+          normalizedCurl.match(/--data-raw\s+'([^']+)'/) ||
+          normalizedCurl.match(/--data-raw\s+"([^"]+)"/);
+      }
       
       console.log('📦 Body match:', bodyMatch ? bodyMatch[1] : 'No body found');
 
