@@ -89,19 +89,25 @@ export const CurlTester = () => {
       const normalizedCurl = curl.replace(/\\\s*\n/g, ' ').replace(/\s+/g, ' ').trim();
       console.log('🔧 Normalized cURL:', normalizedCurl);
       
-      // Extract URL - handle various formats including quoted URLs
-      let urlMatch = normalizedCurl.match(/curl\s+(?:-\w+\s+)*(?:-X\s+\w+\s+)?['"]?([^'"\s]+)['"]?/);
+      // Extract URL - much more specific patterns
+      let urlMatch = null;
+      
+      // Pattern 1: Look for http/https URLs anywhere in the command
+      urlMatch = normalizedCurl.match(/(https?:\/\/[^\s'"]+)/);
+      
       if (!urlMatch) {
-        // Try alternative patterns for URLs with -X before URL
-        urlMatch = normalizedCurl.match(/-X\s+[A-Z]+\s+['"]?([^'"\s]+)['"]?/i);
+        // Pattern 2: Look for quoted URLs
+        urlMatch = normalizedCurl.match(/['"`](https?:\/\/[^'"`]+)['"`]/);
       }
+      
       if (!urlMatch) {
-        // Try finding any http/https URL in the command
-        urlMatch = normalizedCurl.match(/['"]?(https?:\/\/[^'"\s]+)['"]?/);
+        // Pattern 3: Look for URL after curl but before flags
+        urlMatch = normalizedCurl.match(/curl\s+([^\s-]+)/);
       }
+      
       if (!urlMatch) {
-        // Try extracting URL after method
-        urlMatch = normalizedCurl.match(/curl\s+.*?['"]?(https?:\/\/[^'"\s]+)['"]?/);
+        // Pattern 4: Look for URL after method specification
+        urlMatch = normalizedCurl.match(/-X\s+\w+\s+['"`]?([^'"`\s]+)['"`]?/);
       }
       
       console.log('🎯 URL matches:', urlMatch);
@@ -125,12 +131,25 @@ export const CurlTester = () => {
       const method = methodMatch?.[1]?.toUpperCase() || 'GET';
       console.log('📋 Method:', method);
       
-      // Extract headers - handle multiple formats
-      const headerMatches = [
-        ...normalizedCurl.matchAll(/-H\s+["']([^"']+)["']/g),
-        ...normalizedCurl.matchAll(/--header\s+["']([^"']+)["']/g),
-        ...normalizedCurl.matchAll(/-H\s+([^"'\s][^\s]*:\s*[^"'\s][^\s]*)/g)
-      ];
+      // Extract headers - improved patterns
+      const headerMatches = [];
+      
+      // Pattern 1: -H "Header: Value"
+      const headerPattern1 = normalizedCurl.matchAll(/-H\s+"([^"]+)"/g);
+      headerMatches.push(...headerPattern1);
+      
+      // Pattern 2: -H 'Header: Value'
+      const headerPattern2 = normalizedCurl.matchAll(/-H\s+'([^']+)'/g);
+      headerMatches.push(...headerPattern2);
+      
+      // Pattern 3: --header "Header: Value"
+      const headerPattern3 = normalizedCurl.matchAll(/--header\s+"([^"]+)"/g);
+      headerMatches.push(...headerPattern3);
+      
+      // Pattern 4: --header 'Header: Value'
+      const headerPattern4 = normalizedCurl.matchAll(/--header\s+'([^']+)'/g);
+      headerMatches.push(...headerPattern4);
+      
       console.log('📝 Header matches:', Array.from(headerMatches).map(m => m[1]));
       
       // Extract body data - handle multiple formats and multiline JSON
