@@ -469,6 +469,179 @@ export const CurlTester = () => {
     }
   };
 
+  const toggleResultExpanded = (resultId: string) => {
+    const newExpanded = new Set(expandedResults);
+    if (newExpanded.has(resultId)) {
+      newExpanded.delete(resultId);
+    } else {
+      newExpanded.add(resultId);
+    }
+    setExpandedResults(newExpanded);
+  };
+
+  const exportResults = async () => {
+    try {
+      if (exportFormat === 'pdf') {
+        await exportToPDF();
+      } else if (exportFormat === 'docx') {
+        await exportToDocx();
+      } else if (exportFormat === 'zip') {
+        await exportToZip();
+      }
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Could not export the results",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const exportToPDF = async () => {
+    const pdf = new jsPDF();
+    
+    // Add title
+    pdf.setFontSize(20);
+    pdf.text('API Security Test Results', 20, 30);
+    
+    // Add test results
+    let yPosition = 50;
+    testResults.forEach((result, index) => {
+      if (yPosition > 250) {
+        pdf.addPage();
+        yPosition = 30;
+      }
+      
+      pdf.setFontSize(14);
+      pdf.text(`${index + 1}. ${result.name}`, 20, yPosition);
+      yPosition += 10;
+      
+      pdf.setFontSize(10);
+      pdf.text(`Status: ${result.status}`, 20, yPosition);
+      pdf.text(`Severity: ${result.severity}`, 120, yPosition);
+      yPosition += 10;
+      
+      pdf.text(`Description: ${result.description}`, 20, yPosition);
+      yPosition += 15;
+    });
+    
+    pdf.save('security-test-results.pdf');
+    
+    toast({
+      title: "PDF Exported",
+      description: "Security test results exported as PDF",
+    });
+  };
+
+  const exportToDocx = async () => {
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: [
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: "API Security Test Results",
+                bold: true,
+                size: 32,
+              }),
+            ],
+          }),
+          ...testResults.flatMap((result, index) => [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${index + 1}. ${result.name}`,
+                  bold: true,
+                  size: 24,
+                }),
+              ],
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Status: ${result.status} | Severity: ${result.severity}`,
+                  size: 20,
+                }),
+              ],
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Description: ${result.description}`,
+                  size: 20,
+                }),
+              ],
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Details: ${result.details.join(', ')}`,
+                  size: 20,
+                }),
+              ],
+            }),
+            new Paragraph({
+              children: [new TextRun({ text: "" })],
+            }),
+          ]),
+        ],
+      }],
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'security-test-results.docx';
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "DOCX Exported",
+      description: "Security test results exported as DOCX",
+    });
+  };
+
+  const exportToZip = async () => {
+    const zip = new JSZip();
+    
+    // Add JSON report
+    const jsonReport = {
+      timestamp: new Date().toISOString(),
+      originalRequest: originalRequest,
+      originalResponse: originalResponse,
+      testResults: testResults
+    };
+    zip.file('security-report.json', JSON.stringify(jsonReport, null, 2));
+    
+    // Add text summary
+    let textSummary = 'API Security Test Results\n';
+    textSummary += '========================\n\n';
+    testResults.forEach((result, index) => {
+      textSummary += `${index + 1}. ${result.name}\n`;
+      textSummary += `   Status: ${result.status}\n`;
+      textSummary += `   Severity: ${result.severity}\n`;
+      textSummary += `   Description: ${result.description}\n`;
+      textSummary += `   Details: ${result.details.join(', ')}\n\n`;
+    });
+    zip.file('summary.txt', textSummary);
+    
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'security-test-results.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "ZIP Exported",
+      description: "Security test results exported as ZIP",
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background py-8">
       <div className="container max-w-6xl px-4">
@@ -785,7 +958,7 @@ export const CurlTester = () => {
                   </SelectContent>
                 </Select>
                 <Button
-                  onClick={() => {}}
+                  onClick={exportResults}
                   variant="outline"
                   className="flex items-center gap-2"
                 >
@@ -820,22 +993,113 @@ export const CurlTester = () => {
                           <Copy className="w-4 h-4" />
                           Copy cURL
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleResultExpanded(result.id)}
+                          className="flex items-center gap-2"
+                        >
+                          {expandedResults.has(result.id) ? (
+                            <ChevronUp className="w-4 h-4" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4" />
+                          )}
+                          Details
+                        </Button>
                         <Badge variant={getSeverityColor(result.severity) as any}>
                           {result.severity}
                         </Badge>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <h4 className="font-semibold text-sm">Test Details:</h4>
-                      <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                        {result.details.map((detail, index) => (
-                          <li key={index}>{detail}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </CardContent>
+                  
+                  <Collapsible open={expandedResults.has(result.id)}>
+                    <CollapsibleContent>
+                      <CardContent className="space-y-4 border-t">
+                        {/* Test Details */}
+                        <div className="space-y-2">
+                          <h4 className="font-semibold text-sm">Test Details:</h4>
+                          <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                            {result.details.map((detail, index) => (
+                              <li key={index}>{detail}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {/* Request Details */}
+                        <div className="space-y-2">
+                          <h4 className="font-semibold text-sm">Request Details:</h4>
+                          <div className="p-3 rounded-lg bg-muted/30 border">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">Method & URL</p>
+                                <p className="font-mono text-sm">{result.request.method} {result.request.url}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">Headers</p>
+                                <div className="space-y-1">
+                                  {Object.entries(result.request.headers).map(([key, value]) => (
+                                    <p key={key} className="font-mono text-xs">
+                                      <span className="text-muted-foreground">{key}:</span> {String(value)}
+                                    </p>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            {result.request.body && (
+                              <div className="mt-3">
+                                <p className="text-xs text-muted-foreground mb-1">Request Body</p>
+                                <pre className="text-xs font-mono bg-background/50 p-2 rounded border overflow-auto max-h-32">
+                                  {typeof result.request.body === 'string' 
+                                    ? result.request.body 
+                                    : JSON.stringify(result.request.body, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Response Details */}
+                        <div className="space-y-2">
+                          <h4 className="font-semibold text-sm">Response Details:</h4>
+                          <div className="p-3 rounded-lg bg-muted/30 border">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">Status</p>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={result.response.status >= 400 ? "destructive" : "default"}>
+                                    {result.response.status}
+                                  </Badge>
+                                  <span className="text-sm">{result.response.statusText}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Response time: {result.response.time}ms
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">Response Headers</p>
+                                <div className="space-y-1">
+                                  {Object.entries(result.response.headers).map(([key, value]) => (
+                                    <p key={key} className="font-mono text-xs">
+                                      <span className="text-muted-foreground">{key}:</span> {String(value)}
+                                    </p>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">Response Body</p>
+                              <pre className="text-xs font-mono bg-background/50 p-2 rounded border overflow-auto max-h-32">
+                                {typeof result.response.body === 'string' 
+                                  ? result.response.body 
+                                  : JSON.stringify(result.response.body, null, 2)}
+                              </pre>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </Card>
               ))}
             </div>
