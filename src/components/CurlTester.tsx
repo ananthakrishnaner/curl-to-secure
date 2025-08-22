@@ -78,11 +78,15 @@ export const CurlTester = () => {
       // Normalize the curl command - remove line breaks and extra spaces
       const normalizedCurl = curl.replace(/\\\s*\n/g, ' ').replace(/\s+/g, ' ').trim();
       
-      // Extract URL - handle various formats
-      let urlMatch = normalizedCurl.match(/curl\s+(?:-[^\s]*\s+)*(?:["']?)([^"'\s]+)(?:["']?)/);
+      // Extract URL - handle various formats including quoted URLs
+      let urlMatch = normalizedCurl.match(/curl\s+(?:-[^\s]*\s+)*['"]?([^'"]+)['"]?/);
       if (!urlMatch) {
-        // Try alternative patterns
-        urlMatch = normalizedCurl.match(/(?:curl\s+)(?:.*?\s+)?(?:["']?)((https?:\/\/|ftp:\/\/)[^"'\s]+)(?:["']?)/);
+        // Try alternative patterns for URLs with -X before URL
+        urlMatch = normalizedCurl.match(/-X\s+[A-Z]+\s+['"]?([^'"]+)['"]?/i);
+      }
+      if (!urlMatch) {
+        // Try finding any http/https URL in the command
+        urlMatch = normalizedCurl.match(/['"]?(https?:\/\/[^'"?\s]+)['"]?/);
       }
       
       // Extract method
@@ -95,15 +99,23 @@ export const CurlTester = () => {
         ...normalizedCurl.matchAll(/-H\s+([^"'\s][^\s]*:\s*[^"'\s][^\s]*)/g)
       ];
       
-      // Extract body data - handle multiple formats
-      let bodyMatch = normalizedCurl.match(/-d\s+['"`]([^'"`]+)['"`]/) ||
-                     normalizedCurl.match(/--data\s+['"`]([^'"`]+)['"`]/) ||
-                     normalizedCurl.match(/--data-raw\s+['"`]([^'"`]+)['"`]/) ||
-                     normalizedCurl.match(/--json\s+['"`]([^'"`]+)['"`]/);
+      // Extract body data - handle multiple formats and multiline JSON
+      let bodyMatch = normalizedCurl.match(/-d\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
+                     normalizedCurl.match(/--data\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
+                     normalizedCurl.match(/--data-raw\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
+                     normalizedCurl.match(/--json\s+['"`]([^'"`]*(?:\n[^'"`]*)*?)['"`]/s) ||
+                     // Handle unquoted data
+                     normalizedCurl.match(/-d\s+([^-\s][^\s]*(?:\s+[^-][^\s]*)*)/);
 
       if (!urlMatch) return null;
 
-      const url = urlMatch[1];
+      // Clean the URL of any surrounding quotes
+      let url = urlMatch[1].replace(/^['"]|['"]$/g, '');
+      
+      // Ensure URL has protocol
+      if (!url.match(/^https?:\/\//)) {
+        url = 'https://' + url;
+      }
       const method = methodMatch?.[1]?.toUpperCase() || 'GET';
       const headers: Record<string, string> = {};
       
