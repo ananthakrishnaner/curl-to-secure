@@ -509,6 +509,39 @@ export const CurlTester = () => {
               </Button>
             </div>
 
+            {/* Vulnerability Selection */}
+            <div className="bg-muted/20 p-4 rounded-lg border">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                Select Vulnerabilities to Test
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {vulnerabilityOptions.map((vuln) => (
+                  <div key={vuln.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={vuln.id}
+                      checked={selectedVulnerabilities.has(vuln.id)}
+                      onCheckedChange={(checked) => {
+                        const newSelected = new Set(selectedVulnerabilities);
+                        if (checked) {
+                          newSelected.add(vuln.id);
+                        } else {
+                          newSelected.delete(vuln.id);
+                        }
+                        setSelectedVulnerabilities(newSelected);
+                      }}
+                    />
+                    <label htmlFor={vuln.id} className="text-sm font-medium cursor-pointer">
+                      {vuln.name}
+                    </label>
+                    <Badge variant="outline" className="text-xs">
+                      {vuln.category}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="flex items-center space-x-2">
               <input
                 id="ssl-verify"
