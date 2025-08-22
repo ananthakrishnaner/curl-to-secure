@@ -630,7 +630,7 @@ export const CurlTester = () => {
                 </div>
                 
                 <div className="space-y-3" data-screenshot="request">
-                  {Object.entries({ ...parsedCurl.headers, ...editableHeaders })
+                  {Object.entries(parsedCurl.headers)
                     .filter(([key, value]) => key && value) // Filter out empty entries
                     .map(([key, value]) => (
                     <div key={key} className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border">
@@ -638,13 +638,14 @@ export const CurlTester = () => {
                         value={key}
                         disabled
                         className="flex-1 font-mono text-sm bg-background/50"
+                        placeholder="Header name"
                       />
-                      <span className="text-muted-foreground">:</span>
+                      <span className="text-muted-foreground font-mono">:</span>
                       <Input
                         value={editableHeaders[key] !== undefined ? editableHeaders[key] : value}
                         onChange={(e) => updateHeader(key, e.target.value)}
                         onBlur={() => updateCurlFromHeaders()}
-                        className="flex-2 font-mono text-sm"
+                        className="flex-1 font-mono text-sm"
                         placeholder="Header value"
                       />
                       <Button
