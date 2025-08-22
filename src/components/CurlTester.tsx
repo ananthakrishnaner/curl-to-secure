@@ -958,18 +958,6 @@ ${index + 1}. ${result.name} - ${result.status.toUpperCase()}
       }
     }
   };
-    switch (exportFormat) {
-      case 'pdf':
-        exportToPDF();
-        break;
-      case 'docx':
-        exportToDocx();
-        break;
-      case 'zip':
-        exportToZip();
-        break;
-    }
-  };
 
   const handleAnalyzeCurl = async () => {
     if (!curlCommand.trim()) {
