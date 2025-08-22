@@ -25,46 +25,238 @@ interface TestResult {
 }
 
 export const exportToPDF = async (testResults: TestResult[], originalRequest: any, originalResponse: any) => {
-  const pdf = new jsPDF();
+  const pdf = new jsPDF('p', 'mm', 'a4');
   
-  // Add title
-  pdf.setFontSize(20);
-  pdf.text('API Security Test Results', 20, 30);
+  // Define colors (matching application theme)
+  const primaryColor = [72, 183, 115]; // HSL(142 71% 45%) converted to RGB
+  const darkBg = [35, 39, 47]; // HSL(220 27% 8%) converted to RGB
+  const cardBg = [48, 52, 63]; // HSL(220 24% 12%) converted to RGB
+  const textColor = [249, 250, 251]; // HSL(210 40% 98%) converted to RGB
+  const mutedColor = [156, 163, 175]; // HSL(215.4 16.3% 56.9%) converted to RGB
   
-  // Add metadata
+  // Header with gradient effect
+  pdf.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  pdf.rect(0, 0, 210, 35, 'F');
+  
+  // Title
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(24);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('API Security Test Results', 20, 20);
+  
+  // Subtitle
   pdf.setFontSize(12);
-  pdf.text(`Generated: ${new Date().toLocaleDateString()}`, 20, 45);
-  pdf.text(`Total Tests: ${testResults.length}`, 20, 55);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text('Comprehensive Security Analysis Report', 20, 28);
+  
+  // Reset text color for content
+  pdf.setTextColor(0, 0, 0);
+  
+  // Report metadata section
+  let yPos = 50;
+  pdf.setFillColor(245, 245, 245);
+  pdf.rect(15, yPos - 5, 180, 25, 'F');
+  
+  pdf.setFontSize(14);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Report Summary', 20, yPos + 3);
+  
+  pdf.setFontSize(10);
+  pdf.setFont('helvetica', 'normal');
+  const reportDate = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  pdf.text(`Generated: ${reportDate}`, 20, yPos + 10);
+  pdf.text(`Total Tests Executed: ${testResults.length}`, 20, yPos + 16);
   
   const failedTests = testResults.filter(r => r.status === 'failed').length;
   const warningTests = testResults.filter(r => r.status === 'warning').length;
   const passedTests = testResults.filter(r => r.status === 'passed').length;
   
-  pdf.text(`Failed: ${failedTests} | Warnings: ${warningTests} | Passed: ${passedTests}`, 20, 65);
+  // Status indicators with colors
+  pdf.setTextColor(220, 38, 38); // Red for failed
+  pdf.text(`Failed: ${failedTests}`, 130, yPos + 10);
+  pdf.setTextColor(245, 158, 11); // Orange for warnings
+  pdf.text(`Warnings: ${warningTests}`, 130, yPos + 16);
+  pdf.setTextColor(34, 197, 94); // Green for passed
+  pdf.text(`Passed: ${passedTests}`, 170, yPos + 16);
   
-  // Add test results
-  let yPosition = 85;
-  testResults.forEach((result, index) => {
-    if (yPosition > 250) {
-      pdf.addPage();
-      yPosition = 30;
+  pdf.setTextColor(0, 0, 0); // Reset to black
+  yPos += 35;
+  
+  // Original Request Section
+  if (originalRequest) {
+    pdf.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    pdf.rect(15, yPos, 180, 8, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Original Request Details', 20, yPos + 5);
+    pdf.setTextColor(0, 0, 0);
+    yPos += 15;
+    
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Method: ${originalRequest.method || 'GET'}`, 20, yPos);
+    yPos += 5;
+    
+    const urlText = `URL: ${originalRequest.url || 'N/A'}`;
+    const urlLines = pdf.splitTextToSize(urlText, 170);
+    pdf.text(urlLines, 20, yPos);
+    yPos += urlLines.length * 5;
+    
+    if (originalRequest.headers && Object.keys(originalRequest.headers).length > 0) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Headers:', 20, yPos);
+      pdf.setFont('helvetica', 'normal');
+      yPos += 5;
+      
+      Object.entries(originalRequest.headers).forEach(([key, value]) => {
+        const headerText = `  ${key}: ${value}`;
+        const headerLines = pdf.splitTextToSize(headerText, 160);
+        pdf.text(headerLines, 25, yPos);
+        yPos += headerLines.length * 4;
+      });
     }
     
-    pdf.setFontSize(14);
-    pdf.text(`${index + 1}. ${result.name}`, 20, yPosition);
-    yPosition += 10;
+    if (originalRequest.body) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Request Body:', 20, yPos);
+      pdf.setFont('helvetica', 'normal');
+      yPos += 5;
+      
+      const bodyText = typeof originalRequest.body === 'string' 
+        ? originalRequest.body 
+        : JSON.stringify(originalRequest.body, null, 2);
+      const bodyLines = pdf.splitTextToSize(bodyText, 160);
+      pdf.text(bodyLines, 25, yPos);
+      yPos += bodyLines.length * 4;
+    }
+    yPos += 10;
+  }
+  
+  // Test Results Section
+  pdf.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  pdf.rect(15, yPos, 180, 8, 'F');
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(12);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Security Test Results', 20, yPos + 5);
+  pdf.setTextColor(0, 0, 0);
+  yPos += 20;
+  
+  // Individual test results
+  testResults.forEach((result, index) => {
+    // Check if we need a new page
+    if (yPos > 260) {
+      pdf.addPage();
+      yPos = 20;
+    }
     
-    pdf.setFontSize(10);
-    pdf.text(`Status: ${result.status}`, 20, yPosition);
-    pdf.text(`Severity: ${result.severity}`, 120, yPosition);
-    yPosition += 10;
+    // Test header with status color
+    pdf.setFillColor(250, 250, 250);
+    pdf.rect(15, yPos - 3, 180, 12, 'F');
     
-    pdf.text(`Description: ${result.description}`, 20, yPosition);
-    yPosition += 10;
+    // Status color indicator
+    let statusColor = [34, 197, 94]; // Green
+    if (result.status === 'failed') statusColor = [220, 38, 38]; // Red
+    if (result.status === 'warning') statusColor = [245, 158, 11]; // Orange
     
-    pdf.text(`Response: ${result.response.status} ${result.response.statusText}`, 20, yPosition);
-    yPosition += 15;
+    pdf.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
+    pdf.rect(15, yPos - 3, 5, 12, 'F');
+    
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`${index + 1}. ${result.name}`, 25, yPos + 2);
+    
+    // Status and severity
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.text(`Status: ${result.status.toUpperCase()}`, 25, yPos + 7);
+    pdf.text(`Severity: ${result.severity}`, 80, yPos + 7);
+    pdf.text(`Response Time: ${result.response.time}ms`, 130, yPos + 7);
+    yPos += 15;
+    
+    // Description
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    const descLines = pdf.splitTextToSize(result.description, 160);
+    pdf.text(descLines, 25, yPos);
+    yPos += descLines.length * 4 + 3;
+    
+    // Request details
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Request:', 25, yPos);
+    pdf.setFont('helvetica', 'normal');
+    yPos += 4;
+    
+    pdf.text(`  Method: ${result.request.method}`, 25, yPos);
+    yPos += 4;
+    
+    const reqUrlLines = pdf.splitTextToSize(`  URL: ${result.request.url}`, 160);
+    pdf.text(reqUrlLines, 25, yPos);
+    yPos += reqUrlLines.length * 4;
+    
+    if (result.request.body) {
+      const bodyText = typeof result.request.body === 'string' 
+        ? result.request.body 
+        : JSON.stringify(result.request.body);
+      const bodyLines = pdf.splitTextToSize(`  Body: ${bodyText}`, 160);
+      pdf.text(bodyLines, 25, yPos);
+      yPos += bodyLines.length * 4;
+    }
+    
+    // Response details
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Response:', 25, yPos);
+    pdf.setFont('helvetica', 'normal');
+    yPos += 4;
+    
+    pdf.text(`  Status: ${result.response.status} ${result.response.statusText}`, 25, yPos);
+    yPos += 4;
+    
+    if (result.response.body) {
+      const respBodyText = typeof result.response.body === 'string' 
+        ? result.response.body 
+        : JSON.stringify(result.response.body);
+      const respBodyLines = pdf.splitTextToSize(`  Body: ${respBodyText.substring(0, 500)}${respBodyText.length > 500 ? '...' : ''}`, 160);
+      pdf.text(respBodyLines, 25, yPos);
+      yPos += respBodyLines.length * 4;
+    }
+    
+    // Details
+    if (result.details && result.details.length > 0) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Details:', 25, yPos);
+      pdf.setFont('helvetica', 'normal');
+      yPos += 4;
+      
+      result.details.forEach(detail => {
+        const detailLines = pdf.splitTextToSize(`  • ${detail}`, 160);
+        pdf.text(detailLines, 25, yPos);
+        yPos += detailLines.length * 4;
+      });
+    }
+    
+    yPos += 8; // Space between tests
   });
+  
+  // Footer on each page
+  const pageCount = (pdf as any).internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    pdf.setPage(i);
+    pdf.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    pdf.rect(0, 287, 210, 10, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(8);
+    pdf.text(`Page ${i} of ${pageCount}`, 20, 293);
+    pdf.text('Generated by API Security Tester', 140, 293);
+  }
   
   pdf.save('security-test-results.pdf');
 };
