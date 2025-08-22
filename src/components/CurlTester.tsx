@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy, Eye, ChevronDown, ChevronUp, GripVertical, Move3D, Download, Globe } from "lucide-react";
+import { Terminal, Play, Shield, AlertTriangle, CheckCircle, Copy, Eye, ChevronDown, ChevronUp, GripVertical, Move3D, Download, Globe, Edit3, Plus, X } from "lucide-react";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType } from 'docx';
+import JSZip from 'jszip';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
 interface ParsedCurl {
@@ -55,6 +59,10 @@ export const CurlTester = () => {
   const [sslVerify, setSslVerify] = useState(true);
   const [originalRequest, setOriginalRequest] = useState<any>(null);
   const [originalResponse, setOriginalResponse] = useState<any>(null);
+  const [editableHeaders, setEditableHeaders] = useState<Record<string, string>>({});
+  const [newHeaderKey, setNewHeaderKey] = useState("");
+  const [newHeaderValue, setNewHeaderValue] = useState("");
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'docx' | 'zip'>('pdf');
   const { toast } = useToast();
 
   const vulnerabilityOptions = [
@@ -639,6 +647,201 @@ export const CurlTester = () => {
     return results;
   };
 
+  const updateCurlFromHeaders = () => {
+    if (!parsedCurl) return;
+    
+    const allHeaders = { ...parsedCurl.headers, ...editableHeaders };
+    let updatedCurl = curlCommand;
+    
+    // Remove existing header lines
+    updatedCurl = updatedCurl.replace(/-H\s+["'][^"']*["']/g, '');
+    updatedCurl = updatedCurl.replace(/--header\s+["'][^"']*["']/g, '');
+    
+    // Add all headers
+    const headerLines = Object.entries(allHeaders)
+      .filter(([, value]) => value.trim() !== '')
+      .map(([key, value]) => `-H "${key}: ${value}"`)
+      .join(' \\\n  ');
+    
+    if (headerLines) {
+      // Insert headers after method or before data
+      const methodMatch = updatedCurl.match(/-X\s+[A-Z]+/i);
+      if (methodMatch) {
+        const insertIndex = updatedCurl.indexOf(methodMatch[0]) + methodMatch[0].length;
+        updatedCurl = updatedCurl.slice(0, insertIndex) + ' \\\n  ' + headerLines + updatedCurl.slice(insertIndex);
+      } else {
+        // Insert at the beginning after curl command
+        updatedCurl = updatedCurl.replace(/^curl\s+/, `curl \\\n  ${headerLines} \\\n  `);
+      }
+    }
+    
+    setCurlCommand(updatedCurl.replace(/\s+/g, ' ').replace(/\\\s+/g, ' \\\n  '));
+  };
+
+  const addNewHeader = () => {
+    if (newHeaderKey.trim() && newHeaderValue.trim()) {
+      setEditableHeaders(prev => ({
+        ...prev,
+        [newHeaderKey.trim()]: newHeaderValue.trim()
+      }));
+      setNewHeaderKey("");
+      setNewHeaderValue("");
+      updateCurlFromHeaders();
+    }
+  };
+
+  const removeHeader = (key: string) => {
+    setEditableHeaders(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+    updateCurlFromHeaders();
+  };
+
+  const updateHeader = (key: string, value: string) => {
+    setEditableHeaders(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const exportToDocx = async () => {
+    try {
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: [
+            new Paragraph({
+              children: [new TextRun({ text: "API Security Test Report", bold: true, size: 32 })]
+            }),
+            new Paragraph({ text: "" }),
+            ...(originalRequest ? [
+              new Paragraph({
+                children: [new TextRun({ text: "Original Request:", bold: true, size: 24 })]
+              }),
+              new Paragraph({
+                children: [new TextRun({ text: `URL: ${originalRequest.url}` })]
+              }),
+              new Paragraph({
+                children: [new TextRun({ text: `Method: ${originalRequest.method}` })]
+              }),
+              new Paragraph({
+                children: [new TextRun({ text: `SSL Verify: ${originalRequest.sslVerify ? 'Enabled' : 'Disabled'}` })]
+              }),
+              new Paragraph({ text: "" })
+            ] : []),
+            new Paragraph({
+              children: [new TextRun({ text: "Test Results:", bold: true, size: 24 })]
+            }),
+            ...testResults.map(result => new Paragraph({
+              children: [
+                new TextRun({ text: `${result.name} - `, bold: true }),
+                new TextRun({ text: result.status.toUpperCase(), color: result.status === 'failed' ? 'FF0000' : result.status === 'warning' ? 'FFA500' : '008000' }),
+                new TextRun({ text: `\nSeverity: ${result.severity}` }),
+                new TextRun({ text: `\nDescription: ${result.description}` })
+              ]
+            }))
+          ]
+        }]
+      });
+
+      const buffer = await Packer.toBuffer(doc);
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'api-security-report.docx';
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Successful",
+        description: "DOCX report has been downloaded",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Could not generate DOCX report",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const exportToZip = async () => {
+    try {
+      const zip = new JSZip();
+      
+      // Add text report
+      const textReport = `API Security Test Report
+Generated: ${new Date().toISOString()}
+
+Original Request:
+URL: ${originalRequest?.url || 'N/A'}
+Method: ${originalRequest?.method || 'N/A'}
+SSL Verify: ${originalRequest?.sslVerify ? 'Enabled' : 'Disabled'}
+
+Test Results:
+${testResults.map((result, index) => `
+${index + 1}. ${result.name} - ${result.status.toUpperCase()}
+   Severity: ${result.severity}
+   Description: ${result.description}
+   Details: ${result.details.join(', ')}
+`).join('\n')}`;
+      
+      zip.file("report.txt", textReport);
+      
+      // Take screenshots of request/response sections
+      const requestElements = document.querySelectorAll('[data-screenshot="request"]');
+      const responseElements = document.querySelectorAll('[data-screenshot="response"]');
+      
+      for (let i = 0; i < requestElements.length; i++) {
+        const canvas = await html2canvas(requestElements[i] as HTMLElement);
+        const imgData = canvas.toDataURL('image/png').split(',')[1];
+        zip.file(`request-${i + 1}.png`, imgData, { base64: true });
+      }
+      
+      for (let i = 0; i < responseElements.length; i++) {
+        const canvas = await html2canvas(responseElements[i] as HTMLElement);
+        const imgData = canvas.toDataURL('image/png').split(',')[1];
+        zip.file(`response-${i + 1}.png`, imgData, { base64: true });
+      }
+      
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'api-security-report.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Successful",
+        description: "ZIP archive has been downloaded",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Could not generate ZIP archive",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleExport = () => {
+    switch (exportFormat) {
+      case 'pdf':
+        exportToPDF();
+        break;
+      case 'docx':
+        exportToDocx();
+        break;
+      case 'zip':
+        exportToZip();
+        break;
+    }
+  };
+
   const handleAnalyzeCurl = async () => {
     if (!curlCommand.trim()) {
       toast({
@@ -666,6 +869,9 @@ export const CurlTester = () => {
     }
 
     setParsedCurl(parsed);
+    
+    // Initialize editable headers with parsed headers
+    setEditableHeaders(parsed.headers);
     
     // Store original request and simulate response
     setOriginalRequest({
@@ -993,6 +1199,147 @@ export const CurlTester = () => {
           </CardContent>
         </Card>
 
+        {/* Parsed Request Display */}
+        {parsedCurl && (
+          <Card className="bg-gradient-card border-primary/20 mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="w-5 h-5" />
+                Parsed Request Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Request Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg bg-muted/50 border">
+                  <h4 className="font-semibold text-sm text-muted-foreground">Method</h4>
+                  <p className="text-lg font-mono">{parsedCurl.method}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/50 border col-span-2">
+                  <h4 className="font-semibold text-sm text-muted-foreground">URL</h4>
+                  <p className="text-sm font-mono break-all">{parsedCurl.url}</p>
+                </div>
+              </div>
+
+              {/* Headers Editor */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-primary">Headers</h4>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => updateCurlFromHeaders()}
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Update cURL
+                  </Button>
+                </div>
+                
+                <div className="space-y-3" data-screenshot="request">
+                  {Object.entries({ ...parsedCurl.headers, ...editableHeaders }).map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border">
+                      <Input
+                        value={key}
+                        disabled
+                        className="flex-1 font-mono text-sm bg-background/50"
+                      />
+                      <span className="text-muted-foreground">:</span>
+                      <Input
+                        value={editableHeaders[key] !== undefined ? editableHeaders[key] : value}
+                        onChange={(e) => updateHeader(key, e.target.value)}
+                        onBlur={() => updateCurlFromHeaders()}
+                        className="flex-2 font-mono text-sm"
+                        placeholder="Header value"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeHeader(key)}
+                        className="text-destructive"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  
+                  {/* Add New Header */}
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-dashed">
+                    <Input
+                      value={newHeaderKey}
+                      onChange={(e) => setNewHeaderKey(e.target.value)}
+                      placeholder="Header name"
+                      className="flex-1 font-mono text-sm"
+                    />
+                    <span className="text-muted-foreground">:</span>
+                    <Input
+                      value={newHeaderValue}
+                      onChange={(e) => setNewHeaderValue(e.target.value)}
+                      placeholder="Header value"
+                      className="flex-2 font-mono text-sm"
+                      onKeyPress={(e) => e.key === 'Enter' && addNewHeader()}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={addNewHeader}
+                      disabled={!newHeaderKey.trim() || !newHeaderValue.trim()}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Request Body */}
+              {parsedCurl.body && (
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-primary">Request Body</h4>
+                  <div className="p-4 rounded-lg bg-muted/50 border font-mono text-sm overflow-auto max-h-64">
+                    <pre>{JSON.stringify(parsedCurl.body, null, 2)}</pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Original Response */}
+              {originalResponse && (
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-primary">Original Response</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-screenshot="response">
+                    <div className="p-4 rounded-lg bg-muted/50 border">
+                      <h5 className="font-semibold text-sm text-muted-foreground mb-2">Status</h5>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={originalResponse.status === 200 ? "default" : "destructive"}>
+                          {originalResponse.status}
+                        </Badge>
+                        <span className="text-sm">{originalResponse.statusText}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Response time: {originalResponse.time}ms
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-muted/50 border">
+                      <h5 className="font-semibold text-sm text-muted-foreground mb-2">Headers</h5>
+                      <div className="space-y-1 text-xs font-mono">
+                        {Object.entries(originalResponse.headers).map(([key, value]) => (
+                          <div key={key}>
+                            <span className="text-muted-foreground">{key}:</span> {String(value)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <h5 className="font-semibold text-sm text-muted-foreground mb-2">Response Body</h5>
+                    <pre className="text-xs font-mono overflow-auto max-h-32">
+                      {JSON.stringify(originalResponse.body, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Progress Bar */}
         {isAnalyzing && (
           <Card className="bg-gradient-card border-primary/20 mb-8">
@@ -1105,14 +1452,26 @@ export const CurlTester = () => {
           <div>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold">Security Test Results</h2>
-              <Button
-                onClick={exportToPDF}
-                variant="outline"
-                className="flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Export PDF
-              </Button>
+              <div className="flex items-center gap-3">
+                <Select value={exportFormat} onValueChange={(value: 'pdf' | 'docx' | 'zip') => setExportFormat(value)}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                    <SelectItem value="docx">DOCX</SelectItem>
+                    <SelectItem value="zip">ZIP</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleExport}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Export {exportFormat.toUpperCase()}
+                </Button>
+              </div>
               <div className="text-sm text-muted-foreground flex items-center gap-2">
                 <Move3D className="w-4 h-4" />
                 Drag test cards to view detailed request/response data
