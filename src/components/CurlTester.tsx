@@ -52,7 +52,7 @@ export const CurlTester = () => {
   const [parsedCurl, setParsedCurl] = useState<ParsedCurl | null>(null);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
-  const [selectedVulnerabilities, setSelectedVulnerabilities] = useState<Set<string>>(new Set(['bola', 'auth', 'bopla', 'rate_limit', 'input_validation', 'ssrf', 'headers']));
+  const [selectedVulnerabilities, setSelectedVulnerabilities] = useState<Set<string>>(new Set(['headers']));
   const [scanType, setScanType] = useState<'basic' | 'advanced'>('basic');
   const [draggedItem, setDraggedItem] = useState<TestResult | null>(null);
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
@@ -503,7 +503,10 @@ export const CurlTester = () => {
       setOriginalResponse(originalResponse);
       
       // Generate test payloads based on scan type and selected vulnerabilities
+      console.log('🎯 Selected vulnerabilities:', Array.from(selectedVulnerabilities));
+      console.log('📊 Scan type:', scanType);
       const testTemplates = generateTestPayloads(parsed, scanType, selectedVulnerabilities);
+      console.log('🧪 Generated test templates:', testTemplates.length, testTemplates.map(t => t.name));
       const actualTestResults: TestResult[] = [];
       
       // Execute each test
