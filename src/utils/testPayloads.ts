@@ -28,7 +28,7 @@ interface TestResult {
   };
 }
 
-export const generateTestPayloads = (parsed: ParsedCurl, scanType: 'basic' | 'advanced', selectedVulnerabilities?: Set<string>): TestResult[] => {
+export const generateTestPayloads = (parsed: ParsedCurl, scanType: 'basic' | 'advanced' | 'custom', selectedVulnerabilities?: Set<string>, customPayloads?: string): TestResult[] => {
   
   // Input validation test payloads - comprehensive testing
   const inputValidationPayloads = {
@@ -370,6 +370,63 @@ export const generateTestPayloads = (parsed: ParsedCurl, scanType: 'basic' | 'ad
     return tests;
   };
 
+  const generateCustomPayloadTests = (baseRequest: any, customPayloads: string): TestResult[] => {
+    const tests: TestResult[] = [];
+    const payloads = customPayloads.split('\n').filter(p => p.trim() !== '');
+    let testId = 1;
+
+    payloads.forEach(payload => {
+      if (baseRequest.body && typeof baseRequest.body === 'object') {
+        Object.keys(baseRequest.body).forEach(key => {
+          tests.push({
+            id: `custom_payload_${testId++}`,
+            name: `Custom Payload - ${key} Parameter`,
+            status: 'warning',
+            description: `Testing custom payload in ${key} parameter`,
+            details: [`Payload: ${payload}`, 'Custom security test', 'User-defined vulnerability testing'],
+            severity: 'Medium',
+            request: {
+              ...baseRequest,
+              body: { ...baseRequest.body, [key]: payload }
+            },
+            response: {
+              status: 400,
+              statusText: 'Bad Request',
+              headers: { 'Content-Type': 'application/json' },
+              body: { error: 'Custom payload detected' },
+              time: Math.random() * 200 + 100
+            }
+          });
+        });
+      }
+
+      // Test custom payloads in headers
+      Object.keys(baseRequest.headers).forEach(headerName => {
+        tests.push({
+          id: `custom_header_${testId++}`,
+          name: `Custom Header Payload - ${headerName}`,
+          status: 'warning',
+          description: `Testing custom payload in ${headerName} header`,
+          details: [`Payload: ${payload}`, 'Custom header injection test', 'User-defined vulnerability testing'],
+          severity: 'Medium',
+          request: {
+            ...baseRequest,
+            headers: { ...baseRequest.headers, [headerName]: payload }
+          },
+          response: {
+            status: 400,
+            statusText: 'Bad Request',
+            headers: { 'Content-Type': 'application/json' },
+            body: { error: 'Custom header payload detected' },
+            time: Math.random() * 200 + 100
+          }
+        });
+      });
+    });
+
+    return tests;
+  };
+
   const basicTests: TestResult[] = [
     ...generateInputValidationTests(parsed).slice(0, 30),
     ...generateHeaderInjectionTests(parsed).slice(0, 20)
@@ -569,7 +626,15 @@ export const generateTestPayloads = (parsed: ParsedCurl, scanType: 'basic' | 'ad
     }
   ];
 
-  const allTests = scanType === 'advanced' ? advancedTests : basicTests;
+  const customTests: TestResult[] = customPayloads 
+    ? generateCustomPayloadTests(parsed, customPayloads)
+    : [];
+
+  const allTests = scanType === 'basic' 
+    ? basicTests 
+    : scanType === 'advanced' 
+      ? advancedTests 
+      : customTests;
   
   // Filter tests based on selected vulnerabilities if provided
   if (selectedVulnerabilities && selectedVulnerabilities.size > 0) {

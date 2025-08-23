@@ -54,7 +54,8 @@ export const CurlTester = () => {
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set());
   const [selectedVulnerabilities, setSelectedVulnerabilities] = useState<Set<string>>(new Set(['headers']));
-  const [scanType, setScanType] = useState<'basic' | 'advanced'>('basic');
+  const [scanType, setScanType] = useState<'basic' | 'advanced' | 'custom'>('basic');
+  const [customPayloads, setCustomPayloads] = useState("");
   const [draggedItem, setDraggedItem] = useState<TestResult | null>(null);
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
   const [sslVerify, setSslVerify] = useState(true);
@@ -524,7 +525,7 @@ export const CurlTester = () => {
       // Generate test payloads based on scan type and selected vulnerabilities
       console.log('🎯 Selected vulnerabilities:', Array.from(selectedVulnerabilities));
       console.log('📊 Scan type:', scanType);
-      const testTemplates = generateTestPayloads(parsed, scanType, selectedVulnerabilities);
+      const testTemplates = generateTestPayloads(parsed, scanType, selectedVulnerabilities, customPayloads);
       console.log('🧪 Generated test templates:', testTemplates.length, testTemplates.map(t => t.name));
       const actualTestResults: TestResult[] = [];
       
@@ -785,7 +786,7 @@ export const CurlTester = () => {
                 </Badge>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                 <div 
                   className={`p-3 rounded-md border cursor-pointer transition-all duration-200 ${
                     scanType === 'basic' 
@@ -825,14 +826,57 @@ export const CurlTester = () => {
                     }`} />
                   </div>
                 </div>
+
+                <div 
+                  className={`p-3 rounded-md border cursor-pointer transition-all duration-200 ${
+                    scanType === 'custom' 
+                      ? 'bg-primary/10 border-primary ring-2 ring-primary/20' 
+                      : 'bg-background/50 border-border hover:border-border/80'
+                  }`}
+                  onClick={() => setScanType('custom')}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-medium text-sm">Custom Scan</div>
+                      <div className="text-xs text-muted-foreground mt-1">User-defined payloads</div>
+                      <div className="text-xs text-muted-foreground">Custom security tests</div>
+                    </div>
+                    <div className={`w-3 h-3 rounded-full border-2 ${
+                      scanType === 'custom' ? 'bg-primary border-primary' : 'border-border'
+                    }`} />
+                  </div>
+                </div>
               </div>
+
+              {scanType === 'custom' && (
+                <div className="space-y-3 mb-3">
+                  <label className="block text-sm font-medium">
+                    Custom Payloads (one per line)
+                  </label>
+                  <Textarea
+                    placeholder={`Enter your custom payloads here, one per line:
+'; DROP TABLE users; --
+<script>alert('XSS')</script>
+../../etc/passwd
+{"$ne": null}`}
+                    value={customPayloads}
+                    onChange={(e) => setCustomPayloads(e.target.value)}
+                    className="min-h-[120px] font-mono text-sm"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    These payloads will be tested against all input parameters in your request
+                  </p>
+                </div>
+              )}
               
               {/* Scan type info */}
               <div className="p-2 bg-muted/30 rounded-md">
                 <p className="text-xs text-muted-foreground">
                   {scanType === 'basic' 
                     ? 'Basic scan focuses on common vulnerabilities and executes faster.' 
-                    : 'Advanced scan includes comprehensive testing with more payloads and edge cases.'
+                    : scanType === 'advanced'
+                      ? 'Advanced scan includes comprehensive testing with more payloads and edge cases.'
+                      : 'Custom scan allows you to test with your own security payloads.'
                   }
                 </p>
               </div>
@@ -1038,11 +1082,10 @@ export const CurlTester = () => {
 
         {/* Enhanced Scan Progress */}
         <ScanProgress 
-          isAnalyzing={isAnalyzing}
-          analysisProgress={analysisProgress}
+          isScanning={isAnalyzing}
+          progress={analysisProgress}
           currentTest={currentTest}
           scanType={scanType}
-          selectedVulnerabilities={selectedVulnerabilities}
         />
 
         {/* Test Results */}

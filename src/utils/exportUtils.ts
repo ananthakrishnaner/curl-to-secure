@@ -24,6 +24,28 @@ interface TestResult {
   };
 }
 
+const generateCurlFromRequest = (request: any) => {
+  let curlCmd = `curl -X ${request.method}`;
+  
+  // Add URL (with proper quoting if it contains special characters)
+  curlCmd += ` '${request.url}'`;
+  
+  // Add headers
+  if (request.headers && Object.keys(request.headers).length > 0) {
+    Object.entries(request.headers).forEach(([key, value]) => {
+      curlCmd += ` \\\n  -H '${key}: ${value}'`;
+    });
+  }
+  
+  // Add body if present
+  if (request.body) {
+    const bodyStr = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
+    curlCmd += ` \\\n  -d '${bodyStr}'`;
+  }
+  
+  return curlCmd;
+};
+
 export const exportToPDF = async (testResults: TestResult[], originalRequest: any, originalResponse: any) => {
   const pdf = new jsPDF('p', 'mm', 'a4');
   
@@ -206,6 +228,12 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
     // Request content
     requestContent.push(`Method: ${result.request.method}`);
     requestContent.push(`URL: ${result.request.url}`);
+    
+    // Add cURL for this test
+    const testCurl = generateCurlFromRequest(result.request);
+    requestContent.push('cURL:');
+    const curlLines = testCurl.split('\n');
+    requestContent.push(...curlLines.map(line => `  ${line}`));
     
     if (result.request.headers && Object.keys(result.request.headers).length > 0) {
       requestContent.push('Headers:');
@@ -407,6 +435,29 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
           new TextRun({
             text: `URL: ${originalRequest.url || 'N/A'}`,
             size: 18,
+          }),
+        ],
+      })
+    );
+
+    // Add cURL Command section
+    const originalCurl = generateCurlFromRequest(originalRequest);
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "cURL Command:",
+            bold: true,
+            size: 18,
+          }),
+        ],
+      }),
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: originalCurl,
+            size: 14,
+            font: "Courier New",
           }),
         ],
       })

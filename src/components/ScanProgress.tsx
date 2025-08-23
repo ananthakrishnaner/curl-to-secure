@@ -5,40 +5,51 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 
 interface ScanProgressProps {
-  isAnalyzing: boolean;
-  analysisProgress: number;
+  isScanning: boolean;
+  progress: number;
   currentTest: string;
-  scanType: 'basic' | 'advanced';
-  selectedVulnerabilities: Set<string>;
+  scanType: 'basic' | 'advanced' | 'custom';
 }
 
 export const ScanProgress = ({ 
-  isAnalyzing, 
-  analysisProgress, 
+  isScanning, 
+  progress, 
   currentTest, 
-  scanType,
-  selectedVulnerabilities 
+  scanType
 }: ScanProgressProps) => {
   const [pulseIntensity, setPulseIntensity] = useState(0);
   const [scanStage, setScanStage] = useState('initializing');
 
+  const getScanTypeDescription = () => {
+    switch (scanType) {
+      case 'basic':
+        return 'Running essential security checks';
+      case 'advanced':
+        return 'Performing comprehensive vulnerability assessment';
+      case 'custom':
+        return 'Testing with custom security payloads';
+      default:
+        return 'Scanning for security vulnerabilities';
+    }
+  };
+
   useEffect(() => {
-    if (!isAnalyzing) return;
+    if (!isScanning) return;
 
     const interval = setInterval(() => {
       setPulseIntensity(prev => (prev + 1) % 4);
     }, 800);
 
     // Update scan stage based on progress
-    if (analysisProgress < 20) setScanStage('initializing');
-    else if (analysisProgress < 50) setScanStage('scanning');
-    else if (analysisProgress < 80) setScanStage('analyzing');
+    if (progress < 20) setScanStage('initializing');
+    else if (progress < 50) setScanStage('scanning');
+    else if (progress < 80) setScanStage('analyzing');
     else setScanStage('finalizing');
 
     return () => clearInterval(interval);
-  }, [isAnalyzing, analysisProgress]);
+  }, [isScanning, progress]);
 
-  if (!isAnalyzing) return null;
+  if (!isScanning) return null;
 
   const getScanIcon = () => {
     switch (scanStage) {
@@ -60,12 +71,6 @@ export const ScanProgress = ({
     }
   };
 
-  const securityIcons = [
-    { icon: Shield, label: 'Auth', active: selectedVulnerabilities.has('auth') },
-    { icon: Lock, label: 'BOLA', active: selectedVulnerabilities.has('bola') },
-    { icon: Zap, label: 'Input', active: selectedVulnerabilities.has('input_validation') },
-    { icon: AlertTriangle, label: 'Headers', active: selectedVulnerabilities.has('headers') },
-  ];
 
   return (
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -81,8 +86,8 @@ export const ScanProgress = ({
                 pulseIntensity === 1 ? 'scale-110' : 
                 pulseIntensity === 2 ? 'scale-125' : 'scale-140'
               }`} />
-              <div className={`relative z-10 p-6 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border-2 border-primary/30 ${
-                isAnalyzing ? 'animate-spin' : ''
+               <div className={`relative z-10 p-6 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border-2 border-primary/30 ${
+                isScanning ? 'animate-spin' : ''
               }`}>
                 <div className="text-primary">
                   {getScanIcon()}
@@ -96,7 +101,7 @@ export const ScanProgress = ({
                 Security Analysis in Progress
               </h3>
               <p className="text-muted-foreground">
-                {getStageDescription()}
+                {getScanTypeDescription()}
               </p>
               <Badge variant={scanType === 'advanced' ? 'default' : 'secondary'} className="text-xs">
                 {scanType.charAt(0).toUpperCase() + scanType.slice(1)} Scan
@@ -110,13 +115,13 @@ export const ScanProgress = ({
                   {currentTest || 'Preparing tests...'}
                 </span>
                 <span className="text-primary font-bold">
-                  {Math.round(analysisProgress)}%
+                  {Math.round(progress)}%
                 </span>
               </div>
               
               <div className="relative">
                 <Progress 
-                  value={analysisProgress} 
+                  value={progress} 
                   className="h-3 bg-secondary/50" 
                 />
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent h-3 rounded-full animate-pulse" />
@@ -125,22 +130,19 @@ export const ScanProgress = ({
 
             {/* Security Test Icons Grid */}
             <div className="grid grid-cols-4 gap-4 mt-6">
-              {securityIcons.map(({ icon: Icon, label, active }, index) => (
+              {[
+                { icon: Shield, label: 'Auth' },
+                { icon: Lock, label: 'BOLA' },
+                { icon: Zap, label: 'Input' },
+                { icon: AlertTriangle, label: 'Headers' },
+              ].map(({ icon: Icon, label }, index) => (
                 <div key={label} className="flex flex-col items-center space-y-2">
-                  <div className={`p-3 rounded-lg border transition-all duration-300 ${
-                    active 
-                      ? 'bg-primary/10 border-primary/30 shadow-lg' 
-                      : 'bg-muted/50 border-border/30'
-                  } ${
-                    analysisProgress > (index * 25) ? 'animate-pulse' : ''
+                  <div className={`p-3 rounded-lg border transition-all duration-300 bg-primary/10 border-primary/30 shadow-lg ${
+                    progress > (index * 25) ? 'animate-pulse' : ''
                   }`}>
-                    <Icon className={`w-5 h-5 ${
-                      active ? 'text-primary' : 'text-muted-foreground'
-                    }`} />
+                    <Icon className="w-5 h-5 text-primary" />
                   </div>
-                  <span className={`text-xs font-medium ${
-                    active ? 'text-foreground' : 'text-muted-foreground'
-                  }`}>
+                  <span className="text-xs font-medium text-foreground">
                     {label}
                   </span>
                 </div>
@@ -150,11 +152,15 @@ export const ScanProgress = ({
             {/* Scanning Stats */}
             <div className="flex justify-between w-full text-center text-xs text-muted-foreground border-t pt-4">
               <div>
-                <div className="font-medium text-foreground">{selectedVulnerabilities.size}</div>
+                <div className="font-medium text-foreground">
+                  {scanType === 'custom' ? 'Custom' : scanType === 'advanced' ? '12+' : '5+'}
+                </div>
                 <div>Test Categories</div>
               </div>
               <div>
-                <div className="font-medium text-foreground">{scanType === 'advanced' ? '200+' : '50+'}</div>
+                <div className="font-medium text-foreground">
+                  {scanType === 'advanced' ? '200+' : scanType === 'custom' ? 'Variable' : '50+'}
+                </div>
                 <div>Total Tests</div>
               </div>
               <div>
