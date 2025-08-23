@@ -796,6 +796,13 @@ export const exportToMarkdown = async (testResults: TestResult[], originalReques
     markdown += `**Method:** \`${originalRequest.method || 'GET'}\`\n\n`;
     markdown += `**URL:** \`${originalRequest.url || 'N/A'}\`\n\n`;
     
+    // Add cURL Command
+    const originalCurl = generateCurlFromRequest(originalRequest);
+    markdown += '### cURL Command\n\n';
+    markdown += '```bash\n';
+    markdown += originalCurl;
+    markdown += '\n```\n\n';
+    
     if (originalRequest.headers && Object.keys(originalRequest.headers).length > 0) {
       markdown += '### Headers\n\n';
       markdown += '```\n';
@@ -830,6 +837,12 @@ export const exportToMarkdown = async (testResults: TestResult[], originalReques
     markdown += '#### 📤 Request Details\n\n';
     markdown += `**Method:** \`${result.request.method}\`\n\n`;
     markdown += `**URL:** \`${result.request.url}\`\n\n`;
+    
+    // Add cURL Command for this test
+    const testCurl = generateCurlFromRequest(result.request);
+    markdown += '**cURL Command:**\n```bash\n';
+    markdown += testCurl;
+    markdown += '\n```\n\n';
     
     if (result.request.headers && Object.keys(result.request.headers).length > 0) {
       markdown += '**Headers:**\n```\n';
