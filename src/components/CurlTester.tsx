@@ -283,14 +283,18 @@ export const CurlTester = () => {
   const updateCurlFromHeaders = () => {
     if (!parsedCurl) return;
     
-    // Get all current headers
-    const allHeaders = { ...parsedCurl.headers, ...editableHeaders };
+    // Update the parsedCurl with the current editable headers
+    const updatedParsedCurl = {
+      ...parsedCurl,
+      headers: { ...editableHeaders }
+    };
+    setParsedCurl(updatedParsedCurl);
     
     // Rebuild the curl command with updated headers
     let updatedCurl = `curl -X ${parsedCurl.method} '${parsedCurl.url}'`;
     
     // Add all headers
-    const validHeaders = Object.entries(allHeaders)
+    const validHeaders = Object.entries(editableHeaders)
       .filter(([key, value]) => key.trim() !== '' && value.trim() !== '');
     
     if (validHeaders.length > 0) {
@@ -328,12 +332,22 @@ export const CurlTester = () => {
   };
 
   const removeHeader = (key: string) => {
+    if (parsedCurl) {
+      // Remove from parsed curl headers
+      const updatedHeaders = { ...parsedCurl.headers };
+      delete updatedHeaders[key];
+      setParsedCurl({ ...parsedCurl, headers: updatedHeaders });
+    }
+    
+    // Remove from editable headers
     setEditableHeaders(prev => {
       const updated = { ...prev };
       delete updated[key];
       return updated;
     });
-    updateCurlFromHeaders();
+    
+    // Update curl command after removal
+    setTimeout(() => updateCurlFromHeaders(), 100);
   };
 
   const updateHeader = (key: string, value: string) => {
@@ -341,6 +355,10 @@ export const CurlTester = () => {
       ...prev,
       [key]: value
     }));
+  };
+
+  const triggerCurlUpdate = () => {
+    setTimeout(() => updateCurlFromHeaders(), 300);
   };
 
   const makeHttpRequest = async (request: any): Promise<any> => {
@@ -918,10 +936,10 @@ export const CurlTester = () => {
                         placeholder="Header name"
                       />
                       <span className="text-muted-foreground font-mono">:</span>
-                      <Input
+                       <Input
                         value={editableHeaders[key] !== undefined ? editableHeaders[key] : value}
                         onChange={(e) => updateHeader(key, e.target.value)}
-                        onBlur={() => updateCurlFromHeaders()}
+                        onBlur={triggerCurlUpdate}
                         className="flex-1 font-mono text-sm"
                         placeholder="Header value"
                       />
