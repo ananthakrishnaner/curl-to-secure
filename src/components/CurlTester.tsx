@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { generateTestPayloads } from "@/utils/testPayloads";
 import { exportToPDF, exportToDocx, exportToZip, exportToMarkdown } from "@/utils/exportUtils";
 import { TestResultCard } from "@/components/TestResultCard";
+import { ScanProgress } from "@/components/ScanProgress";
 
 interface ParsedCurl {
   url: string;
@@ -1035,29 +1036,14 @@ export const CurlTester = () => {
           </Card>
         )}
 
-        {/* Progress Bar */}
-        {isAnalyzing && (
-          <Card className="bg-gradient-card border-primary/20 mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5 animate-pulse" />
-                Security Analysis in Progress
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">{currentTest}</span>
-                  <span className="text-primary font-medium">{Math.round(analysisProgress)}%</span>
-                </div>
-                <Progress value={analysisProgress} className="h-2" />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Running comprehensive OWASP API Top 10 security tests...
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        {/* Enhanced Scan Progress */}
+        <ScanProgress 
+          isAnalyzing={isAnalyzing}
+          analysisProgress={analysisProgress}
+          currentTest={currentTest}
+          scanType={scanType}
+          selectedVulnerabilities={selectedVulnerabilities}
+        />
 
         {/* Test Results */}
         {testResults.length > 0 && (
