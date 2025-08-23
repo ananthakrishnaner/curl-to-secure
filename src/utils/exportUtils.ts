@@ -565,7 +565,9 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
         ? result.response.body 
         : JSON.stringify(result.response.body, null, 2);
       responseDetails.push("Response Body:");
-      responseDetails.push(respBodyText);
+      // Split long response body into multiple lines for better display
+      const bodyLines = respBodyText.split('\n');
+      responseDetails.push(...bodyLines);
     }
 
     // Create table-like structure
