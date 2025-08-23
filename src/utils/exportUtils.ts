@@ -497,15 +497,6 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
       new Paragraph({
         children: [
           new TextRun({
-            text: `Status: ${result.status.toUpperCase()} | Severity: ${result.severity} | Response Time: ${result.response.time}ms`,
-            size: 16,
-            color: result.status === 'failed' ? 'DC2626' : result.status === 'warning' ? 'F59E0B' : '22C55E',
-          }),
-        ],
-      }),
-      new Paragraph({
-        children: [
-          new TextRun({
             text: `Description: ${result.description}`,
             size: 14,
           }),
