@@ -637,9 +637,9 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
   });
 
   console.log('📄 Converting to buffer...');
-  const buffer = await Packer.toBuffer(doc);
+  const buffer = await Packer.toBlob(doc);
   console.log('📄 Creating blob...');
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const blob = buffer;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
