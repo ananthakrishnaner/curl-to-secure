@@ -307,6 +307,8 @@ export const exportToPDF = async (testResults: TestResult[], originalRequest: an
 };
 
 export const exportToDocx = async (testResults: TestResult[], originalRequest: any, originalResponse: any) => {
+  try {
+    console.log('📄 Starting DOCX generation with:', { testResultsCount: testResults.length });
   const reportDate = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
     month: 'long', 
@@ -626,6 +628,7 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
     );
   });
 
+  console.log('📄 Creating DOCX document...');
   const doc = new Document({
     sections: [{
       properties: {},
@@ -633,7 +636,9 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
     }],
   });
 
+  console.log('📄 Converting to buffer...');
   const buffer = await Packer.toBuffer(doc);
+  console.log('📄 Creating blob...');
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -641,6 +646,11 @@ export const exportToDocx = async (testResults: TestResult[], originalRequest: a
   a.download = 'security-test-results.docx';
   a.click();
   URL.revokeObjectURL(url);
+  console.log('✅ DOCX export completed successfully');
+  } catch (error) {
+    console.error('❌ DOCX export error:', error);
+    throw error;
+  }
 };
 
 export const exportToZip = async (testResults: TestResult[], originalRequest: any, originalResponse: any) => {

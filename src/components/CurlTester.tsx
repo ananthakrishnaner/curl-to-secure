@@ -591,10 +591,14 @@ export const CurlTester = () => {
 
   const exportResults = async () => {
     try {
+      console.log('🚀 Starting export...', { exportFormat, testResultsLength: testResults.length });
+      
       if (exportFormat === 'pdf') {
         await exportToPDF(testResults, originalRequest, originalResponse);
       } else if (exportFormat === 'docx') {
+        console.log('📄 Starting DOCX export...');
         await exportToDocx(testResults, originalRequest, originalResponse);
+        console.log('✅ DOCX export completed');
       } else if (exportFormat === 'zip') {
         await exportToZip(testResults, originalRequest, originalResponse);
       } else if (exportFormat === 'markdown') {
@@ -606,9 +610,10 @@ export const CurlTester = () => {
         description: `Security test results exported as ${exportFormat.toUpperCase()}`,
       });
     } catch (error) {
+      console.error('❌ Export failed:', error);
       toast({
         title: "Export Failed",
-        description: "Could not export the results",
+        description: error instanceof Error ? error.message : "Could not export the results",
         variant: "destructive"
       });
     }
