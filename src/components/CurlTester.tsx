@@ -62,6 +62,8 @@ export const CurlTester = () => {
   const [requestMethod, setRequestMethod] = useState<'fetch' | 'curl-copy' | 'browser-disable' | 'extension'>('fetch');
   const [originalRequest, setOriginalRequest] = useState<any>(null);
   const [originalResponse, setOriginalResponse] = useState<any>(null);
+  const [testRequestResult, setTestRequestResult] = useState<any>(null);
+  const [isTestingCurl, setIsTestingCurl] = useState(false);
   const [editableHeaders, setEditableHeaders] = useState<Record<string, string>>({});
   const [newHeaderKey, setNewHeaderKey] = useState("");
   const [newHeaderValue, setNewHeaderValue] = useState("");
@@ -364,35 +366,116 @@ export const CurlTester = () => {
     setTimeout(() => updateCurlFromHeaders(), 300);
   };
 
-  const sendTestRequest = async (request: any): Promise<any> => {
-    console.log(`🧪 SENDING TEST REQUEST (Original):`);
-    console.log(`📍 URL: ${request.url}`);
-    console.log(`📋 METHOD: ${request.method}`);
-    console.log(`📝 HEADERS:`, JSON.stringify(request.headers, null, 2));
-    console.log(`📦 BODY:`, request.body);
-
-    const properHeaders: Record<string, string> = {};
-    if (request.headers && typeof request.headers === 'object') {
-      Object.entries(request.headers).forEach(([key, value]) => {
-        if (key && value) {
-          properHeaders[key] = String(value);
-        }
+  const testOriginalCurl = async () => {
+    if (!parsedCurl) {
+      toast({
+        title: "No cURL Command",
+        description: "Please enter a cURL command first",
+        variant: "destructive"
       });
+      return;
     }
 
+    setIsTestingCurl(true);
+    const startTime = Date.now();
+
     try {
-      const testResponse = await fetch(request.url, {
-        method: request.method,
+      console.log(`🧪 TESTING ORIGINAL CURL REQUEST:`);
+      console.log(`📍 URL: ${parsedCurl.url}`);
+      console.log(`📋 METHOD: ${parsedCurl.method}`);
+      console.log(`📝 HEADERS:`, JSON.stringify(parsedCurl.headers, null, 2));
+      console.log(`📦 BODY:`, parsedCurl.body);
+
+      // Format headers properly
+      const properHeaders: Record<string, string> = {};
+      if (parsedCurl.headers && typeof parsedCurl.headers === 'object') {
+        Object.entries(parsedCurl.headers).forEach(([key, value]) => {
+          if (key && value) {
+            properHeaders[key] = String(value);
+          }
+        });
+      }
+
+      const response = await fetch(parsedCurl.url, {
+        method: parsedCurl.method,
         headers: properHeaders,
-        body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
+        body: parsedCurl.body ? (typeof parsedCurl.body === 'string' ? parsedCurl.body : JSON.stringify(parsedCurl.body)) : undefined,
         mode: 'cors'
       });
+
+      const endTime = Date.now();
       
-      console.log(`✅ TEST REQUEST SUCCESS - Status: ${testResponse.status}`);
-      return testResponse;
+      let responseBody;
+      const contentType = response.headers.get('Content-Type') || '';
+      
+      try {
+        if (contentType.includes('application/json')) {
+          responseBody = await response.json();
+        } else {
+          responseBody = await response.text();
+        }
+      } catch {
+        responseBody = 'Could not read response body';
+      }
+      
+      // Convert headers to object
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+
+      const testResult = {
+        request: {
+          method: parsedCurl.method,
+          url: parsedCurl.url,
+          headers: properHeaders,
+          body: parsedCurl.body
+        },
+        response: {
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+          body: responseBody,
+          time: endTime - startTime
+        }
+      };
+
+      setTestRequestResult(testResult);
+      
+      toast({
+        title: "Test Request Completed",
+        description: `Response: ${response.status} ${response.statusText} (${endTime - startTime}ms)`,
+      });
+
     } catch (error) {
-      console.log(`❌ TEST REQUEST FAILED:`, error);
-      throw error;
+      console.error(`❌ TEST REQUEST FAILED:`, error);
+      const endTime = Date.now();
+      
+      const testResult = {
+        request: {
+          method: parsedCurl.method,
+          url: parsedCurl.url,
+          headers: parsedCurl.headers,
+          body: parsedCurl.body
+        },
+        response: {
+          status: 0,
+          statusText: 'Network Error',
+          headers: {},
+          body: error instanceof Error ? error.message : 'Unknown error',
+          time: endTime - startTime
+        }
+      };
+
+      setTestRequestResult(testResult);
+      
+      toast({
+        title: "Test Request Failed",
+        description: error instanceof Error ? error.message : "Network error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsTestingCurl(false);
     }
   };
 
@@ -400,12 +483,8 @@ export const CurlTester = () => {
     const startTime = Date.now();
     
     try {
-      // First send the test request (original request)
-      console.log(`🧪 Step 1: Sending test request...`);
-      await sendTestRequest(request);
-      
-      // Then send the actual request
-      console.log(`🚀 Step 2: SENDING ACTUAL REQUEST:`);
+      // Send request exactly as provided in cURL command
+      console.log(`🚀 SENDING REQUEST AS PROVIDED:`);
       console.log(`📍 URL: ${request.url}`);
       console.log(`📋 METHOD: ${request.method}`);
       console.log(`📝 HEADERS:`, JSON.stringify(request.headers, null, 2));
@@ -1117,8 +1196,139 @@ export const CurlTester = () => {
                 </>
               )}
             </Button>
+
+            {/* Test Your cURL Button */}
+            {parsedCurl && (
+              <Button 
+                onClick={testOriginalCurl}
+                disabled={isTestingCurl}
+                variant="outline"
+                className="w-full border-primary/50 hover:bg-primary/10"
+              >
+                {isTestingCurl ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    Testing Your cURL...
+                  </>
+                ) : (
+                  <>
+                    <Globe className="w-4 h-4 mr-2" />
+                    Test Your cURL
+                  </>
+                )}
+              </Button>
+            )}
           </CardContent>
         </Card>
+
+        {/* Test Request Results */}
+        {testRequestResult && (
+          <Card className="bg-gradient-card border-primary/20 mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="w-5 h-5" />
+                Test Request Results
+                <Badge variant={testRequestResult.response.status >= 200 && testRequestResult.response.status < 300 ? "default" : "destructive"}>
+                  {testRequestResult.response.status} {testRequestResult.response.statusText}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Request Details */}
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-sm flex items-center gap-2">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                    Request
+                  </h4>
+                  
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-xs font-medium text-muted-foreground">Method & URL:</span>
+                        <p className="text-sm font-mono break-all">{testRequestResult.request.method} {testRequestResult.request.url}</p>
+                      </div>
+                      
+                      {Object.keys(testRequestResult.request.headers || {}).length > 0 && (
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground">Headers:</span>
+                          <div className="mt-1 space-y-1">
+                            {Object.entries(testRequestResult.request.headers).map(([key, value]) => (
+                              <div key={key} className="text-xs font-mono">
+                                <span className="text-blue-600">{key}:</span> <span className="text-gray-700">{String(value)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {testRequestResult.request.body && (
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground">Body:</span>
+                          <pre className="text-xs font-mono bg-background/50 p-2 rounded mt-1 whitespace-pre-wrap">
+                            {typeof testRequestResult.request.body === 'string' 
+                              ? testRequestResult.request.body 
+                              : JSON.stringify(testRequestResult.request.body, null, 2)
+                            }
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Response Details */}
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-sm flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    Response
+                    <Badge variant="outline" className="text-xs">
+                      {testRequestResult.response.time}ms
+                    </Badge>
+                  </h4>
+                  
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-xs font-medium text-muted-foreground">Status:</span>
+                        <p className="text-sm font-mono">
+                          <Badge variant={testRequestResult.response.status >= 200 && testRequestResult.response.status < 300 ? "default" : "destructive"}>
+                            {testRequestResult.response.status} {testRequestResult.response.statusText}
+                          </Badge>
+                        </p>
+                      </div>
+                      
+                      {Object.keys(testRequestResult.response.headers || {}).length > 0 && (
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground">Headers:</span>
+                          <div className="mt-1 space-y-1 max-h-32 overflow-y-auto">
+                            {Object.entries(testRequestResult.response.headers).map(([key, value]) => (
+                              <div key={key} className="text-xs font-mono">
+                                <span className="text-green-600">{key}:</span> <span className="text-gray-700">{String(value)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {testRequestResult.response.body && (
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground">Body:</span>
+                          <pre className="text-xs font-mono bg-background/50 p-2 rounded mt-1 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                            {typeof testRequestResult.response.body === 'string' 
+                              ? testRequestResult.response.body 
+                              : JSON.stringify(testRequestResult.response.body, null, 2)
+                            }
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Parsed Request Display */}
         {parsedCurl && (
