@@ -1208,9 +1208,53 @@ export const CurlTester = () => {
                   </div>
                   <div className="p-4 rounded-lg bg-muted/50 border">
                     <h5 className="font-semibold text-sm text-muted-foreground mb-2">Response Body</h5>
-                    <pre className="text-xs font-mono overflow-auto max-h-32">
-                      {JSON.stringify(originalResponse.body, null, 2)}
-                    </pre>
+                    {originalResponse.body && typeof originalResponse.body === 'object' && originalResponse.body.error ? (
+                      <div className="space-y-3">
+                        <div className="p-3 rounded bg-destructive/10 border border-destructive/20">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge variant="destructive" className="text-xs">
+                              {originalResponse.body.errorType || 'ERROR'}
+                            </Badge>
+                            {originalResponse.body.isSSLRelated && (
+                              <Badge variant="outline" className="text-xs">
+                                SSL Issue
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm font-medium text-destructive mb-2">
+                            {originalResponse.body.error}
+                          </p>
+                          {originalResponse.body.technicalDetails && (
+                            <div className="mt-3 p-2 bg-muted/50 rounded text-xs">
+                              <h6 className="font-semibold mb-1">Technical Details:</h6>
+                              <pre className="whitespace-pre-wrap text-muted-foreground">
+                                {originalResponse.body.technicalDetails}
+                              </pre>
+                            </div>
+                          )}
+                          {originalResponse.body.sslVerifyEnabled !== undefined && (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              SSL Verification: {originalResponse.body.sslVerifyEnabled ? 'Enabled' : 'Disabled'}
+                            </div>
+                          )}
+                        </div>
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                            Show raw error response
+                          </summary>
+                          <pre className="mt-2 p-2 bg-muted/30 rounded overflow-auto max-h-32 font-mono">
+                            {JSON.stringify(originalResponse.body, null, 2)}
+                          </pre>
+                        </details>
+                      </div>
+                    ) : (
+                      <pre className="text-xs font-mono overflow-auto max-h-32">
+                        {typeof originalResponse.body === 'string' 
+                          ? originalResponse.body 
+                          : JSON.stringify(originalResponse.body, null, 2)
+                        }
+                      </pre>
+                    )}
                   </div>
                 </div>
               )}
