@@ -625,7 +625,7 @@ export const CurlTester = () => {
     }
 
     setParsedCurl(parsed);
-    setEditableHeaders(parsed.headers);
+    setEditableHeaders({...parsed.headers}); // Spread to ensure all headers are copied
     
     try {
       // First, make the original request
@@ -1145,7 +1145,7 @@ export const CurlTester = () => {
                       />
                       <span className="text-muted-foreground font-mono">:</span>
                        <Input
-                        value={editableHeaders[key] !== undefined ? editableHeaders[key] : value}
+                        value={editableHeaders[key] || value || ''}
                         onChange={(e) => updateHeader(key, e.target.value)}
                         onBlur={triggerCurlUpdate}
                         className="flex-1 font-mono text-sm"
