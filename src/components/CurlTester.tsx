@@ -368,22 +368,19 @@ export const CurlTester = () => {
     const startTime = Date.now();
     
     try {
-      console.log(`📡 Making simple request to: ${request.url}`);
+      console.log(`📡 Making request to: ${request.url}`);
       console.log(`🔍 Request method: ${request.method}`);
+      console.log(`📋 All request headers:`, request.headers);
 
-      // Use minimal fetch configuration to avoid preflight
       const fetchOptions: RequestInit = {
         method: request.method,
-        mode: 'no-cors', // This prevents CORS preflight but limits response access
+        headers: request.headers || {}, // Send ALL headers from the original request
+        mode: 'cors',
         credentials: 'omit'
       };
 
-      // Only add body for methods that support it, keep it simple
+      // Add body for POST/PUT/PATCH requests
       if (request.body && (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH')) {
-        // Use text/plain to avoid preflight
-        fetchOptions.headers = {
-          'Content-Type': 'text/plain'
-        };
         fetchOptions.body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
         console.log(`📦 Request body:`, fetchOptions.body);
       }
@@ -391,12 +388,30 @@ export const CurlTester = () => {
       const response = await fetch(request.url, fetchOptions);
       const endTime = Date.now();
       
-      // With no-cors mode, we can't access response details, but we can confirm the request was sent
+      let responseBody;
+      const contentType = response.headers.get('Content-Type') || '';
+      
+      if (contentType.includes('application/json')) {
+        try {
+          responseBody = await response.json();
+        } catch {
+          responseBody = await response.text();
+        }
+      } else {
+        responseBody = await response.text();
+      }
+      
+      // Convert headers to object
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      
       return {
-        status: response.type === 'opaque' ? 200 : response.status,
-        statusText: response.type === 'opaque' ? 'Request sent (no-cors mode)' : response.statusText,
-        headers: response.type === 'opaque' ? {} : Object.fromEntries(response.headers.entries()),
-        body: response.type === 'opaque' ? 'Response blocked by no-cors mode - request sent successfully' : await response.text(),
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        body: responseBody,
         time: endTime - startTime
       };
     } catch (error) {
