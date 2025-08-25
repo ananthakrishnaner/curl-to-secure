@@ -368,49 +368,22 @@ export const CurlTester = () => {
     const startTime = Date.now();
     
     try {
-      // Clean headers to avoid triggering unnecessary CORS preflight requests
-      const cleanHeaders: Record<string, string> = {};
-      
-      // Only include headers that won't trigger preflight
-      if (request.headers) {
-        Object.entries(request.headers).forEach(([key, value]: [string, any]) => {
-          const normalizedKey = key.toLowerCase();
-          
-          // Always include these headers as they're safe for simple requests
-          if (['accept', 'accept-language', 'content-language', 'content-type'].includes(normalizedKey)) {
-            // For content-type, only certain values are safe for simple requests
-            if (normalizedKey === 'content-type') {
-              const contentType = value.toLowerCase();
-              if (['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'].some(safe => contentType.includes(safe))) {
-                cleanHeaders[key] = value;
-              } else {
-                // For other content types like application/json, we need to include them
-                // even though they trigger preflight
-                cleanHeaders[key] = value;
-              }
-            } else {
-              cleanHeaders[key] = value;
-            }
-          } else {
-            // Include all other headers (Authorization, custom headers, etc.)
-            // These will trigger preflight but that's necessary for the request to work properly
-            cleanHeaders[key] = value;
-          }
-        });
-      }
-
-      console.log(`📡 Making direct request to: ${request.url}`);
+      console.log(`📡 Making simple request to: ${request.url}`);
       console.log(`🔍 Request method: ${request.method}`);
-      console.log(`📋 Request headers:`, cleanHeaders);
 
+      // Use minimal fetch configuration to avoid preflight
       const fetchOptions: RequestInit = {
         method: request.method,
-        headers: cleanHeaders,
-        mode: 'cors',
-        credentials: 'omit' // Don't send cookies to avoid unnecessary preflight complexity
+        mode: 'no-cors', // This prevents CORS preflight but limits response access
+        credentials: 'omit'
       };
 
+      // Only add body for methods that support it, keep it simple
       if (request.body && (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH')) {
+        // Use text/plain to avoid preflight
+        fetchOptions.headers = {
+          'Content-Type': 'text/plain'
+        };
         fetchOptions.body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
         console.log(`📦 Request body:`, fetchOptions.body);
       }
@@ -418,30 +391,12 @@ export const CurlTester = () => {
       const response = await fetch(request.url, fetchOptions);
       const endTime = Date.now();
       
-      let responseBody;
-      const contentType = response.headers.get('Content-Type') || '';
-      
-      if (contentType.includes('application/json')) {
-        try {
-          responseBody = await response.json();
-        } catch {
-          responseBody = await response.text();
-        }
-      } else {
-        responseBody = await response.text();
-      }
-      
-      // Convert headers to object
-      const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        responseHeaders[key] = value;
-      });
-      
+      // With no-cors mode, we can't access response details, but we can confirm the request was sent
       return {
-        status: response.status,
-        statusText: response.statusText,
-        headers: responseHeaders,
-        body: responseBody,
+        status: response.type === 'opaque' ? 200 : response.status,
+        statusText: response.type === 'opaque' ? 'Request sent (no-cors mode)' : response.statusText,
+        headers: response.type === 'opaque' ? {} : Object.fromEntries(response.headers.entries()),
+        body: response.type === 'opaque' ? 'Response blocked by no-cors mode - request sent successfully' : await response.text(),
         time: endTime - startTime
       };
     } catch (error) {
