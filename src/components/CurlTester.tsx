@@ -372,13 +372,16 @@ export const CurlTester = () => {
       console.log(`🚀 SENDING ORIGINAL CURL REQUEST:`);
       console.log(`📍 URL: ${request.url}`);
       console.log(`📋 METHOD: ${request.method}`);
-      console.log(`📝 ORIGINAL HEADERS:`, JSON.stringify(request.headers, null, 2));
-      console.log(`📦 ORIGINAL BODY:`, request.body);
+      console.log(`📝 HEADERS TO SEND:`, JSON.stringify(request.headers, null, 2));
+      console.log(`📦 BODY TO SEND:`, request.body);
 
-      // Create fetch request with EXACT original parameters
+      // Create fetch request with EXACT original parameters - force headers to be sent
+      const requestHeaders = request.headers || {};
+      console.log('🔥 FINAL HEADERS FOR FETCH:', JSON.stringify(requestHeaders, null, 2));
+      
       const response = await fetch(request.url, {
         method: request.method,
-        headers: request.headers,
+        headers: requestHeaders, // Use the exact headers from request
         body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
         mode: 'no-cors'
       });
@@ -617,6 +620,9 @@ export const CurlTester = () => {
         body: parsed.body,
         sslVerify: sslVerify
       };
+      
+      console.log('🔥 BEFORE SENDING - Original Request Object:', JSON.stringify(originalRequest, null, 2));
+      console.log('🔥 PARSED HEADERS:', JSON.stringify(parsed.headers, null, 2));
       
       const originalResponse = await makeHttpRequest(originalRequest);
       setOriginalRequest(originalRequest);
