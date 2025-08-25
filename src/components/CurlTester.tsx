@@ -59,9 +59,10 @@ export const CurlTester = () => {
   const [draggedItem, setDraggedItem] = useState<TestResult | null>(null);
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
   const [sslVerify, setSslVerify] = useState(true);
+  const [requestMethod, setRequestMethod] = useState<'fetch' | 'curl-copy' | 'browser-disable' | 'extension'>('fetch');
   const [useProxy, setUseProxy] = useState(false);
   const [proxyHost, setProxyHost] = useState("127.0.0.1");
-  const [proxyPort, setProxyPort] = useState("8080");
+  const [proxyPort, setProxyPort] = useState("8081");
   const [proxyType, setProxyType] = useState<'cors-proxy' | 'burpsuite' | 'custom-cors'>('cors-proxy');
   const [customCorsProxy, setCustomCorsProxy] = useState("https://cors-anywhere.herokuapp.com/");
   const [originalRequest, setOriginalRequest] = useState<any>(null);
@@ -1084,7 +1085,7 @@ export const CurlTester = () => {
                 </Badge>
               </div>
 
-              {useProxy && (
+              {requestMethod === 'fetch' && useProxy && (
                 <div className="space-y-3 p-4 rounded-lg bg-muted/30 border">
                   {/* Proxy Type Selection */}
                   <div className="space-y-2">
