@@ -62,7 +62,8 @@ export const CurlTester = () => {
   const [useProxy, setUseProxy] = useState(false);
   const [proxyHost, setProxyHost] = useState("127.0.0.1");
   const [proxyPort, setProxyPort] = useState("8080");
-  const [proxyType, setProxyType] = useState<'burpsuite' | 'insomnia' | 'custom'>('burpsuite');
+  const [proxyType, setProxyType] = useState<'cors-proxy' | 'burpsuite' | 'custom-cors'>('cors-proxy');
+  const [customCorsProxy, setCustomCorsProxy] = useState("https://cors-anywhere.herokuapp.com/");
   const [originalRequest, setOriginalRequest] = useState<any>(null);
   const [originalResponse, setOriginalResponse] = useState<any>(null);
   const [editableHeaders, setEditableHeaders] = useState<Record<string, string>>({});
@@ -377,30 +378,40 @@ export const CurlTester = () => {
         mode: 'cors'
       };
 
-      // Configure proxy if enabled
+      // Configure CORS proxy if enabled
       let targetUrl = request.url;
+      
       if (useProxy) {
-        const proxyUrl = `http://${proxyHost}:${proxyPort}`;
-        // Note: Browser limitations apply - this works best with browser extensions or disabled security
-        fetchOptions.headers = {
-          ...fetchOptions.headers,
-          'X-Proxy-Target': request.url,
-          'X-Proxy-Method': request.method
-        };
-        
-        console.log(`🔄 Routing request through proxy: ${proxyUrl}`);
-        console.log(`📡 Target URL: ${request.url}`);
-        
-        // For now, we'll attempt direct proxy connection
-        // In production, this would need a CORS-enabled proxy endpoint
-        targetUrl = request.url; // Browser limitations prevent direct proxy usage
+        if (proxyType === 'cors-proxy' || proxyType === 'custom-cors') {
+          // CORS Proxy: Prepend proxy URL to target URL
+          const proxyPrefix = proxyType === 'cors-proxy' 
+            ? 'https://cors-anywhere.herokuapp.com/' 
+            : customCorsProxy;
+          
+          // Ensure proxy URL ends with /
+          const cleanProxyPrefix = proxyPrefix.endsWith('/') ? proxyPrefix : proxyPrefix + '/';
+          targetUrl = cleanProxyPrefix + request.url;
+          
+          console.log(`🌐 Using CORS Proxy: ${cleanProxyPrefix}`);
+          console.log(`🎯 Original URL: ${request.url}`);
+          console.log(`🔄 Proxied URL: ${targetUrl}`);
+          
+        } else if (proxyType === 'burpsuite') {
+          // Local CORS proxy (assuming you've set up a CORS-enabled proxy)
+          const localCorsProxy = `http://${proxyHost}:${proxyPort}/`;
+          targetUrl = localCorsProxy + request.url;
+          
+          console.log(`🔧 Using Local CORS Proxy: ${localCorsProxy}`);
+          console.log(`🎯 Original URL: ${request.url}`);
+          console.log(`🔄 Proxied URL: ${targetUrl}`);
+        }
       }
       
       if (request.body && (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH')) {
         fetchOptions.body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
       }
       
-      const response = await fetch(request.url, fetchOptions);
+      const response = await fetch(targetUrl, fetchOptions);
       const endTime = Date.now();
       
       let responseBody;
@@ -1061,84 +1072,105 @@ export const CurlTester = () => {
                   {/* Proxy Type Selection */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Proxy Type</label>
-                    <Select value={proxyType} onValueChange={(value: 'burpsuite' | 'insomnia' | 'custom') => {
+                    <Select value={proxyType} onValueChange={(value: 'cors-proxy' | 'burpsuite' | 'custom-cors') => {
                       setProxyType(value);
-                      if (value === 'burpsuite') {
+                      if (value === 'cors-proxy') {
+                        setCustomCorsProxy('https://cors-anywhere.herokuapp.com/');
+                      } else if (value === 'burpsuite') {
                         setProxyHost('127.0.0.1');
                         setProxyPort('8080');
-                      } else if (value === 'insomnia') {
-                        setProxyHost('127.0.0.1');
-                        setProxyPort('8080');
+                        setCustomCorsProxy('http://127.0.0.1:8080/');
+                      } else if (value === 'custom-cors') {
+                        setCustomCorsProxy('https://your-cors-proxy.com/');
                       }
                     }}>
                       <SelectTrigger className="bg-background">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-background border shadow-lg z-50">
-                        <SelectItem value="burpsuite">BurpSuite (127.0.0.1:8080)</SelectItem>
-                        <SelectItem value="insomnia">Insomnia Proxy</SelectItem>
-                        <SelectItem value="custom">Custom Proxy</SelectItem>
+                        <SelectItem value="cors-proxy">Public CORS Proxy</SelectItem>
+                        <SelectItem value="burpsuite">Local CORS Proxy (BurpSuite)</SelectItem>
+                        <SelectItem value="custom-cors">Custom CORS Proxy</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
-                  {/* Proxy Host and Port */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* CORS Proxy URL Input */}
+                  {(proxyType === 'cors-proxy' || proxyType === 'custom-cors') && (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Proxy Host</label>
+                      <label className="text-sm font-medium">CORS Proxy URL</label>
                       <Input
-                        value={proxyHost}
-                        onChange={(e) => setProxyHost(e.target.value)}
-                        placeholder="127.0.0.1"
+                        value={customCorsProxy}
+                        onChange={(e) => setCustomCorsProxy(e.target.value)}
+                        placeholder="https://cors-anywhere.herokuapp.com/"
                         className="font-mono text-sm"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Proxy Port</label>
-                      <Input
-                        value={proxyPort}
-                        onChange={(e) => setProxyPort(e.target.value)}
-                        placeholder="8080"
-                        className="font-mono text-sm"
-                      />
+                  )}
+
+                  {/* Local Proxy Host and Port for BurpSuite */}
+                  {proxyType === 'burpsuite' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Proxy Host</label>
+                        <Input
+                          value={proxyHost}
+                          onChange={(e) => setProxyHost(e.target.value)}
+                          placeholder="127.0.0.1"
+                          className="font-mono text-sm"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Proxy Port</label>
+                        <Input
+                          value={proxyPort}
+                          onChange={(e) => setProxyPort(e.target.value)}
+                          placeholder="8080"
+                          className="font-mono text-sm"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Proxy Instructions */}
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs">
                     <p className="text-blue-800 font-medium mb-1">🔧 Setup Instructions:</p>
                     <div className="text-blue-700 space-y-1">
+                      {proxyType === 'cors-proxy' && (
+                        <>
+                          <p>1. Using public CORS proxy service</p>
+                          <p>2. Requests will be routed through the proxy automatically</p>
+                          <p>3. No additional setup required</p>
+                          <p>4. ⚠️ Note: Public proxies may have rate limits</p>
+                        </>
+                      )}
                       {proxyType === 'burpsuite' && (
                         <>
-                          <p>1. Open BurpSuite → Proxy → Options</p>
-                          <p>2. Ensure proxy listener is running on 127.0.0.1:8080</p>
-                          <p>3. Configure browser to use BurpSuite proxy</p>
-                          <p>4. Enable "Intercept is off" in Proxy tab</p>
+                          <p>1. Set up local CORS proxy server</p>
+                          <p>2. Configure server to handle CORS headers</p>
+                          <p>3. Ensure proxy accepts requests from browser</p>
+                          <p>4. Use CORS proxy, not direct BurpSuite proxy</p>
                         </>
                       )}
-                      {proxyType === 'insomnia' && (
+                      {proxyType === 'custom-cors' && (
                         <>
-                          <p>1. Open Insomnia → Preferences → General</p>
-                          <p>2. Configure proxy settings</p>
-                          <p>3. Ensure proxy server is running</p>
-                        </>
-                      )}
-                      {proxyType === 'custom' && (
-                        <>
-                          <p>1. Ensure your proxy server is running</p>
-                          <p>2. Configure host and port correctly</p>
-                          <p>3. Proxy should handle CORS headers</p>
+                          <p>1. Ensure your CORS proxy server is running</p>
+                          <p>2. Configure proxy to add CORS headers</p>
+                          <p>3. Proxy should prepend URL to target URL</p>
+                          <p>4. Format: {customCorsProxy}[TARGET_URL]</p>
                         </>
                       )}
                     </div>
                   </div>
 
-                  {/* Browser Limitation Warning */}
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                    <p className="text-yellow-800 font-medium">⚠️ Browser Limitation Note:</p>
-                    <p className="text-yellow-700 mt-1">
-                      Due to browser security, direct proxy connection may not work. 
-                      Consider using a CORS proxy or browser extension for testing.
+                  {/* CORS Proxy Status */}
+                  <div className="p-3 bg-green-50 border border-green-200 rounded text-xs">
+                    <p className="text-green-800 font-medium">✅ CORS Proxy Enabled:</p>
+                    <p className="text-green-700 mt-1">
+                      {proxyType === 'cors-proxy' || proxyType === 'custom-cors' 
+                        ? 'Requests will be routed through CORS proxy to bypass browser restrictions.'
+                        : 'Using local CORS proxy. Ensure your local proxy server handles CORS headers.'
+                      }
                     </p>
                   </div>
                 </div>
