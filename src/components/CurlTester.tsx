@@ -367,7 +367,7 @@ export const CurlTester = () => {
   };
 
   const testOriginalCurl = async () => {
-    if (!parsedCurl) {
+    if (!curlCommand.trim()) {
       toast({
         title: "No cURL Command",
         description: "Please enter a cURL command first",
@@ -376,30 +376,46 @@ export const CurlTester = () => {
       return;
     }
 
+    // Parse cURL if not already parsed
+    let currentParsedCurl = parsedCurl;
+    if (!currentParsedCurl) {
+      currentParsedCurl = parseCurlCommand(curlCommand);
+      if (!currentParsedCurl) {
+        toast({
+          title: "Invalid cURL Command",
+          description: "Could not parse the provided cURL command",
+          variant: "destructive"
+        });
+        return;
+      }
+      setParsedCurl(currentParsedCurl);
+      setEditableHeaders({...currentParsedCurl.headers});
+    }
+
     setIsTestingCurl(true);
     const startTime = Date.now();
 
     try {
       console.log(`🧪 TESTING ORIGINAL CURL REQUEST:`);
-      console.log(`📍 URL: ${parsedCurl.url}`);
-      console.log(`📋 METHOD: ${parsedCurl.method}`);
-      console.log(`📝 HEADERS:`, JSON.stringify(parsedCurl.headers, null, 2));
-      console.log(`📦 BODY:`, parsedCurl.body);
+      console.log(`📍 URL: ${currentParsedCurl.url}`);
+      console.log(`📋 METHOD: ${currentParsedCurl.method}`);
+      console.log(`📝 HEADERS:`, JSON.stringify(currentParsedCurl.headers, null, 2));
+      console.log(`📦 BODY:`, currentParsedCurl.body);
 
       // Format headers properly
       const properHeaders: Record<string, string> = {};
-      if (parsedCurl.headers && typeof parsedCurl.headers === 'object') {
-        Object.entries(parsedCurl.headers).forEach(([key, value]) => {
+      if (currentParsedCurl.headers && typeof currentParsedCurl.headers === 'object') {
+        Object.entries(currentParsedCurl.headers).forEach(([key, value]) => {
           if (key && value) {
             properHeaders[key] = String(value);
           }
         });
       }
 
-      const response = await fetch(parsedCurl.url, {
-        method: parsedCurl.method,
+      const response = await fetch(currentParsedCurl.url, {
+        method: currentParsedCurl.method,
         headers: properHeaders,
-        body: parsedCurl.body ? (typeof parsedCurl.body === 'string' ? parsedCurl.body : JSON.stringify(parsedCurl.body)) : undefined,
+        body: currentParsedCurl.body ? (typeof currentParsedCurl.body === 'string' ? currentParsedCurl.body : JSON.stringify(currentParsedCurl.body)) : undefined,
         mode: 'cors'
       });
 
@@ -426,10 +442,10 @@ export const CurlTester = () => {
 
       const testResult = {
         request: {
-          method: parsedCurl.method,
-          url: parsedCurl.url,
+          method: currentParsedCurl.method,
+          url: currentParsedCurl.url,
           headers: properHeaders,
-          body: parsedCurl.body
+          body: currentParsedCurl.body
         },
         response: {
           status: response.status,
@@ -453,10 +469,10 @@ export const CurlTester = () => {
       
       const testResult = {
         request: {
-          method: parsedCurl.method,
-          url: parsedCurl.url,
-          headers: parsedCurl.headers,
-          body: parsedCurl.body
+          method: currentParsedCurl.method,
+          url: currentParsedCurl.url,
+          headers: currentParsedCurl.headers,
+          body: currentParsedCurl.body
         },
         response: {
           status: 0,
@@ -1184,7 +1200,7 @@ export const CurlTester = () => {
               {curlCommand.trim() && (
                 <Button 
                   onClick={testOriginalCurl}
-                  disabled={isTestingCurl || !parsedCurl}
+                  disabled={isTestingCurl}
                   variant="outline"
                   className="w-full border-primary/50 hover:bg-primary/10"
                 >
