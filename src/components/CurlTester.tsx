@@ -392,6 +392,13 @@ export const CurlTester = () => {
           console.log(`🌐 Using Public CORS Proxy`);
           console.log(`🎯 Original URL: ${request.url}`);
           console.log(`🔄 Proxied URL: ${targetUrl}`);
+          console.log(`📋 Headers to send:`, request.headers);
+          
+          // Ensure headers are properly passed through CORS proxy
+          fetchOptions.headers = {
+            ...request.headers,
+            ...fetchOptions.headers
+          };
           
         } else if (proxyType === 'custom-cors') {
           // Custom CORS Proxy
@@ -402,6 +409,13 @@ export const CurlTester = () => {
           console.log(`🔧 Using Custom CORS Proxy: ${cleanProxyPrefix}`);
           console.log(`🎯 Original URL: ${request.url}`);
           console.log(`🔄 Proxied URL: ${targetUrl}`);
+          console.log(`📋 Headers to send:`, request.headers);
+          
+          // Ensure headers are properly passed through custom CORS proxy
+          fetchOptions.headers = {
+            ...request.headers,
+            ...fetchOptions.headers
+          };
           
         } else if (proxyType === 'burpsuite') {
           // Local proxy attempt - will likely fail due to CORS
@@ -412,13 +426,20 @@ export const CurlTester = () => {
           console.log(`🔧 Local Proxy: http://${proxyHost}:${proxyPort}/`);
           console.log(`🎯 Original URL: ${request.url}`);
           console.log(`🔄 Full Proxied URL: ${targetUrl}`);
+          console.log(`📋 Original headers being sent:`, request.headers);
           
-          // Add special headers for local proxy debugging
+          // Ensure ALL original headers are passed through the proxy
           fetchOptions.headers = {
-            ...fetchOptions.headers,
+            ...request.headers, // Start with original headers
+            ...fetchOptions.headers, // Add any additional headers
             'X-Debug-Original-URL': request.url,
-            'X-Debug-Proxy-Type': 'local-burpsuite'
+            'X-Debug-Proxy-Type': 'local-burpsuite',
+            // Ensure critical headers are preserved
+            'User-Agent': request.headers['User-Agent'] || 'BurpSuite-Proxy-Client/1.0',
+            'Accept': request.headers['Accept'] || '*/*'
           };
+          
+          console.log(`🔍 Final headers for proxy:`, fetchOptions.headers);
         }
       }
       
