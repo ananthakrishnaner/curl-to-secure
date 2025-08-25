@@ -413,6 +413,7 @@ export const CurlTester = () => {
       let errorMessage = 'Unknown network error';
       let errorType = 'NETWORK_ERROR';
       let technicalDetails = '';
+      let isSSLRelated = false;
       
       if (error instanceof Error) {
         errorMessage = error.message;
@@ -428,11 +429,12 @@ export const CurlTester = () => {
             '• Invalid URL or unreachable host';
         } else if (error.message.includes('certificate') || error.message.includes('SSL') || error.message.includes('TLS')) {
           errorType = 'SSL_ERROR';
+          isSSLRelated = true;
           technicalDetails = 'SSL/TLS Certificate Error:\n' +
             '• The server\'s SSL certificate may be invalid, expired, or self-signed\n' +
             '• Certificate chain issues\n' +
             '• SSL protocol mismatch\n' +
-            '• Try with a different SSL configuration';
+            (request.sslVerify ? '• Try disabling SSL verification for testing purposes' : '• SSL verification is already disabled');
         } else if (error.message.includes('CORS')) {
           errorType = 'CORS_ERROR';
           technicalDetails = 'Cross-Origin Request Blocked:\n' +
@@ -454,23 +456,54 @@ export const CurlTester = () => {
         }
       }
       
+      // Special handling for SSL verification settings
+      if (isSSLRelated && !request.sslVerify) {
+        // If SSL verification is disabled, provide a more lenient response
+        console.warn('🔓 SSL Error occurred but SSL verification is disabled:', errorMessage);
+        
+        // For browser security reasons, we can't actually disable SSL verification
+        // But we can provide clearer messaging about the limitation
+        technicalDetails += '\n\nNote: Browser security prevents disabling SSL verification.\n' +
+          'For testing with invalid certificates, consider:\n' +
+          '• Using a different testing tool (like Postman or cURL)\n' +
+          '• Setting up a proper SSL certificate\n' +
+          '• Using HTTP instead of HTTPS for testing';
+        
+        toast({
+          title: "SSL Certificate Issue (Verification Disabled)",
+          description: `SSL verification is disabled, but browser security still prevents the request.\n\n${technicalDetails}`,
+          variant: "destructive",
+          duration: 12000,
+        });
+      } else if (isSSLRelated && request.sslVerify) {
+        // If SSL verification is enabled and there's an SSL error
+        toast({
+          title: "SSL Certificate Error",
+          description: `${errorMessage}\n\nTip: Try disabling SSL verification for testing purposes.\n\n${technicalDetails}`,
+          variant: "destructive",
+          duration: 10000,
+        });
+      } else {
+        // Show detailed error toast for non-SSL errors
+        toast({
+          title: `${errorType}: Request Failed`,
+          description: `${errorMessage}\n\nURL: ${request.url}\n\n${technicalDetails}`,
+          variant: "destructive",
+          duration: 10000,
+        });
+      }
+      
       // Log detailed error information for debugging
       console.error('🚨 Network Request Failed:', {
         url: request.url,
         method: request.method,
+        sslVerify: request.sslVerify,
         errorType,
         errorMessage,
+        isSSLRelated,
         originalError: error,
         technicalDetails,
         timestamp: new Date().toISOString()
-      });
-      
-      // Show detailed error toast
-      toast({
-        title: `${errorType}: Request Failed`,
-        description: `${errorMessage}\n\nURL: ${request.url}\n\n${technicalDetails}`,
-        variant: "destructive",
-        duration: 10000, // Show longer for detailed errors
       });
       
       return {
@@ -480,6 +513,8 @@ export const CurlTester = () => {
         body: { 
           error: errorMessage,
           errorType,
+          isSSLRelated,
+          sslVerifyEnabled: request.sslVerify,
           technicalDetails,
           url: request.url,
           method: request.method,
@@ -607,8 +642,14 @@ export const CurlTester = () => {
         setCurrentTest(`Testing ${testTemplate.name}...`);
         setAnalysisProgress(((i + 1) / testTemplates.length) * 95 + 5);
         
+        // Add SSL verification setting to test request
+        const testRequestWithSSL = {
+          ...testTemplate.request,
+          sslVerify: sslVerify
+        };
+        
         // Make the actual HTTP request for this test
-        const testResponse = await makeHttpRequest(testTemplate.request);
+        const testResponse = await makeHttpRequest(testRequestWithSSL);
         
         // Analyze the response to determine if it passed/failed
         const status = analyzeTestCase(originalResponse, testResponse, testTemplate.name);
@@ -954,17 +995,42 @@ export const CurlTester = () => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <input
-                id="ssl-verify"
-                type="checkbox"
-                checked={sslVerify}
-                onChange={(e) => setSslVerify(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              <label htmlFor="ssl-verify" className="text-sm font-medium">
-                SSL Verify
-              </label>
+            <div className="bg-muted/20 p-4 rounded-lg border">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  SSL/TLS Configuration
+                </h3>
+                <Badge variant={sslVerify ? 'default' : 'secondary'} className="text-xs">
+                  {sslVerify ? 'Enabled' : 'Disabled'}
+                </Badge>
+              </div>
+              
+              <div className="flex items-center space-x-3 p-3 rounded-md border bg-background/50">
+                <Checkbox
+                  id="ssl-verify"
+                  checked={sslVerify}
+                  onCheckedChange={(checked) => setSslVerify(!!checked)}
+                />
+                <label htmlFor="ssl-verify" className="text-sm font-medium cursor-pointer flex-1">
+                  SSL Certificate Verification
+                </label>
+                <Badge variant={sslVerify ? 'default' : 'destructive'} className="text-xs">
+                  {sslVerify ? 'Secure' : 'Insecure'}
+                </Badge>
+              </div>
+              
+              <div className="mt-3 p-2 bg-muted/30 rounded-md">
+                <p className="text-xs text-muted-foreground">
+                  {sslVerify 
+                    ? '✓ SSL certificates will be verified (recommended for production)' 
+                    : '⚠️ SSL certificate verification disabled (only for testing with self-signed certificates)'
+                  }
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Note: Browser security may still prevent requests to servers with invalid SSL certificates.
+                </p>
+              </div>
             </div>
             
             <Button 
