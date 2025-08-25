@@ -368,31 +368,46 @@ export const CurlTester = () => {
     const startTime = Date.now();
     
     try {
-      // Send original request directly without OPTIONS preflight
-      console.log(`🚀 SENDING DIRECT REQUEST (NO OPTIONS):`);
+      // Send request exactly as provided in cURL command
+      console.log(`🚀 SENDING REQUEST AS PROVIDED:`);
       console.log(`📍 URL: ${request.url}`);
       console.log(`📋 METHOD: ${request.method}`);
       console.log(`📝 HEADERS:`, JSON.stringify(request.headers, null, 2));
       console.log(`📦 BODY:`, request.body);
 
-      // Use no-cors mode to bypass preflight OPTIONS request
       const response = await fetch(request.url, {
         method: request.method,
         headers: request.headers || {},
         body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
-        mode: 'no-cors' // This prevents OPTIONS preflight but limits response access
+        mode: 'cors' // Normal CORS behavior - OPTIONS preflight if needed, then actual request
       });
       
       const endTime = Date.now();
       
-      // Request sent directly without OPTIONS preflight
-      console.log(`✅ Direct request sent (no OPTIONS preflight)`);
+      let responseBody;
+      const contentType = response.headers.get('Content-Type') || '';
+      
+      try {
+        if (contentType.includes('application/json')) {
+          responseBody = await response.json();
+        } else {
+          responseBody = await response.text();
+        }
+      } catch {
+        responseBody = 'Could not read response body';
+      }
+      
+      // Convert headers to object
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
       
       return {
-        status: 200, // Cannot read actual status in no-cors mode
-        statusText: 'Request sent directly without OPTIONS preflight',
-        headers: {},
-        body: 'Direct request sent with all original headers - no preflight OPTIONS',
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        body: responseBody,
         time: endTime - startTime
       };
     } catch (error) {
