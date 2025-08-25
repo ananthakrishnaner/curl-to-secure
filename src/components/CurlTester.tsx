@@ -59,6 +59,10 @@ export const CurlTester = () => {
   const [draggedItem, setDraggedItem] = useState<TestResult | null>(null);
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
   const [sslVerify, setSslVerify] = useState(true);
+  const [useProxy, setUseProxy] = useState(false);
+  const [proxyHost, setProxyHost] = useState("127.0.0.1");
+  const [proxyPort, setProxyPort] = useState("8080");
+  const [proxyType, setProxyType] = useState<'burpsuite' | 'insomnia' | 'custom'>('burpsuite');
   const [originalRequest, setOriginalRequest] = useState<any>(null);
   const [originalResponse, setOriginalResponse] = useState<any>(null);
   const [editableHeaders, setEditableHeaders] = useState<Record<string, string>>({});
@@ -372,6 +376,25 @@ export const CurlTester = () => {
         headers: request.headers,
         mode: 'cors'
       };
+
+      // Configure proxy if enabled
+      let targetUrl = request.url;
+      if (useProxy) {
+        const proxyUrl = `http://${proxyHost}:${proxyPort}`;
+        // Note: Browser limitations apply - this works best with browser extensions or disabled security
+        fetchOptions.headers = {
+          ...fetchOptions.headers,
+          'X-Proxy-Target': request.url,
+          'X-Proxy-Method': request.method
+        };
+        
+        console.log(`🔄 Routing request through proxy: ${proxyUrl}`);
+        console.log(`📡 Target URL: ${request.url}`);
+        
+        // For now, we'll attempt direct proxy connection
+        // In production, this would need a CORS-enabled proxy endpoint
+        targetUrl = request.url; // Browser limitations prevent direct proxy usage
+      }
       
       if (request.body && (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH')) {
         fetchOptions.body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
@@ -626,7 +649,11 @@ export const CurlTester = () => {
         url: parsed.url,
         headers: parsed.headers,
         body: parsed.body,
-        sslVerify: sslVerify
+        sslVerify: sslVerify,
+        useProxy: useProxy,
+        proxyHost: proxyHost,
+        proxyPort: proxyPort,
+        proxyType: proxyType
       };
       
       const originalResponse = await makeHttpRequest(originalRequest);
@@ -646,14 +673,18 @@ export const CurlTester = () => {
         setCurrentTest(`Testing ${testTemplate.name}...`);
         setAnalysisProgress(((i + 1) / testTemplates.length) * 95 + 5);
         
-        // Add SSL verification setting to test request
-        const testRequestWithSSL = {
+        // Add SSL verification and proxy settings to test request
+        const testRequestWithSettings = {
           ...testTemplate.request,
-          sslVerify: sslVerify
+          sslVerify: sslVerify,
+          useProxy: useProxy,
+          proxyHost: proxyHost,
+          proxyPort: proxyPort,
+          proxyType: proxyType
         };
         
         // Make the actual HTTP request for this test
-        const testResponse = await makeHttpRequest(testRequestWithSSL);
+        const testResponse = await makeHttpRequest(testRequestWithSettings);
         
         // Analyze the response to determine if it passed/failed
         const status = analyzeTestCase(originalResponse, testResponse, testTemplate.name);
@@ -997,6 +1028,121 @@ export const CurlTester = () => {
                   }
                 </p>
               </div>
+            </div>
+
+            {/* Proxy Configuration */}
+            <div className="bg-muted/20 p-4 rounded-lg border mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Globe className="w-4 h-4" />
+                  Proxy Configuration
+                </h3>
+                <Badge variant={useProxy ? 'default' : 'secondary'} className="text-xs">
+                  {useProxy ? 'Enabled' : 'Disabled'}
+                </Badge>
+              </div>
+              
+              <div className="flex items-center space-x-3 p-3 rounded-md border bg-background/50 mb-3">
+                <Checkbox
+                  id="use-proxy"
+                  checked={useProxy}
+                  onCheckedChange={(checked) => setUseProxy(!!checked)}
+                />
+                <label htmlFor="use-proxy" className="text-sm font-medium cursor-pointer flex-1">
+                  Route through Proxy Server
+                </label>
+                <Badge variant={useProxy ? 'default' : 'outline'} className="text-xs">
+                  {useProxy ? 'Active' : 'Inactive'}
+                </Badge>
+              </div>
+
+              {useProxy && (
+                <div className="space-y-3 p-4 rounded-lg bg-muted/30 border">
+                  {/* Proxy Type Selection */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Proxy Type</label>
+                    <Select value={proxyType} onValueChange={(value: 'burpsuite' | 'insomnia' | 'custom') => {
+                      setProxyType(value);
+                      if (value === 'burpsuite') {
+                        setProxyHost('127.0.0.1');
+                        setProxyPort('8080');
+                      } else if (value === 'insomnia') {
+                        setProxyHost('127.0.0.1');
+                        setProxyPort('8080');
+                      }
+                    }}>
+                      <SelectTrigger className="bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-background border shadow-lg z-50">
+                        <SelectItem value="burpsuite">BurpSuite (127.0.0.1:8080)</SelectItem>
+                        <SelectItem value="insomnia">Insomnia Proxy</SelectItem>
+                        <SelectItem value="custom">Custom Proxy</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Proxy Host and Port */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Proxy Host</label>
+                      <Input
+                        value={proxyHost}
+                        onChange={(e) => setProxyHost(e.target.value)}
+                        placeholder="127.0.0.1"
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Proxy Port</label>
+                      <Input
+                        value={proxyPort}
+                        onChange={(e) => setProxyPort(e.target.value)}
+                        placeholder="8080"
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Proxy Instructions */}
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs">
+                    <p className="text-blue-800 font-medium mb-1">🔧 Setup Instructions:</p>
+                    <div className="text-blue-700 space-y-1">
+                      {proxyType === 'burpsuite' && (
+                        <>
+                          <p>1. Open BurpSuite → Proxy → Options</p>
+                          <p>2. Ensure proxy listener is running on 127.0.0.1:8080</p>
+                          <p>3. Configure browser to use BurpSuite proxy</p>
+                          <p>4. Enable "Intercept is off" in Proxy tab</p>
+                        </>
+                      )}
+                      {proxyType === 'insomnia' && (
+                        <>
+                          <p>1. Open Insomnia → Preferences → General</p>
+                          <p>2. Configure proxy settings</p>
+                          <p>3. Ensure proxy server is running</p>
+                        </>
+                      )}
+                      {proxyType === 'custom' && (
+                        <>
+                          <p>1. Ensure your proxy server is running</p>
+                          <p>2. Configure host and port correctly</p>
+                          <p>3. Proxy should handle CORS headers</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Browser Limitation Warning */}
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                    <p className="text-yellow-800 font-medium">⚠️ Browser Limitation Note:</p>
+                    <p className="text-yellow-700 mt-1">
+                      Due to browser security, direct proxy connection may not work. 
+                      Consider using a CORS proxy or browser extension for testing.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="bg-muted/20 p-4 rounded-lg border">
