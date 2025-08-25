@@ -463,25 +463,29 @@ export const CurlTester = () => {
         
         // For browser security reasons, we can't actually disable SSL verification
         // But we can provide clearer messaging about the limitation
-        technicalDetails += '\n\nNote: Browser security prevents disabling SSL verification.\n' +
-          'For testing with invalid certificates, consider:\n' +
-          '• Using a different testing tool (like Postman or cURL)\n' +
-          '• Setting up a proper SSL certificate\n' +
-          '• Using HTTP instead of HTTPS for testing';
+        technicalDetails += '\n\n⚠️  BROWSER LIMITATION:\n' +
+          'Even with SSL verification disabled, browsers CANNOT bypass SSL certificate validation.\n' +
+          'This is a security feature that cannot be overridden.\n\n' +
+          '✅ SOLUTIONS:\n' +
+          '• Use a tool like Postman, Insomnia, or command-line cURL for testing\n' +
+          '• Set up a proper SSL certificate on your server\n' +
+          '• Use HTTP instead of HTTPS for local testing\n' +
+          '• Use a reverse proxy with valid certificates\n' +
+          '• For development: Access your server via localhost with proper setup';
         
         toast({
-          title: "SSL Certificate Issue (Verification Disabled)",
-          description: `SSL verification is disabled, but browser security still prevents the request.\n\n${technicalDetails}`,
+          title: "🔒 Browser SSL Limitation",
+          description: `SSL verification is disabled in the UI, but browsers enforce SSL validation regardless. This request would work with tools like Postman or cURL.`,
           variant: "destructive",
-          duration: 12000,
+          duration: 15000,
         });
       } else if (isSSLRelated && request.sslVerify) {
         // If SSL verification is enabled and there's an SSL error
         toast({
           title: "SSL Certificate Error",
-          description: `${errorMessage}\n\nTip: Try disabling SSL verification for testing purposes.\n\n${technicalDetails}`,
+          description: `${errorMessage}\n\n💡 Tip: You can try disabling SSL verification, but browsers will still enforce SSL validation.\n\n${technicalDetails}`,
           variant: "destructive",
-          duration: 10000,
+          duration: 12000,
         });
       } else {
         // Show detailed error toast for non-SSL errors
@@ -1024,12 +1028,18 @@ export const CurlTester = () => {
                 <p className="text-xs text-muted-foreground">
                   {sslVerify 
                     ? '✓ SSL certificates will be verified (recommended for production)' 
-                    : '⚠️ SSL certificate verification disabled (only for testing with self-signed certificates)'
+                    : '⚠️ SSL certificate verification disabled (UI setting only)'
                   }
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Note: Browser security may still prevent requests to servers with invalid SSL certificates.
-                </p>
+                {!sslVerify && (
+                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                    <p className="text-yellow-800 font-medium">🔒 Browser Security Limitation:</p>
+                    <p className="text-yellow-700 mt-1">
+                      Browsers cannot actually disable SSL validation for security reasons. 
+                      Use tools like Postman, Insomnia, or cURL for true SSL bypass testing.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
             
