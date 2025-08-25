@@ -378,14 +378,26 @@ export const CurlTester = () => {
       // Create fetch request with EXACT original parameters - force headers to be sent
       const requestHeaders = request.headers || {};
       console.log('🔥 FINAL HEADERS FOR FETCH:', JSON.stringify(requestHeaders, null, 2));
+      console.log('🔥 TYPEOF HEADERS:', typeof requestHeaders);
+      console.log('🔥 HEADERS KEYS:', Object.keys(requestHeaders));
+      console.log('🔥 HEADERS VALUES:', Object.values(requestHeaders));
       
-      const response = await fetch(request.url, {
+      // Log each header individually
+      Object.entries(requestHeaders).forEach(([key, value]) => {
+        console.log(`🎯 Header: "${key}" = "${value}"`);
+      });
+      
+      const fetchConfig = {
         method: request.method,
         headers: requestHeaders, // Send ALL original cURL headers
         body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
-        mode: 'cors', // Changed back to cors to allow all headers
-        credentials: 'omit'
-      });
+        mode: 'cors' as RequestMode, // Allow all headers
+        credentials: 'omit' as RequestCredentials
+      };
+      
+      console.log('🚀 FINAL FETCH CONFIG:', JSON.stringify(fetchConfig, null, 2));
+      
+      const response = await fetch(request.url, fetchConfig);
       
       const endTime = Date.now();
       
