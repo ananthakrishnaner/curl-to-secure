@@ -60,11 +60,6 @@ export const CurlTester = () => {
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
   const [sslVerify, setSslVerify] = useState(true);
   const [requestMethod, setRequestMethod] = useState<'fetch' | 'curl-copy' | 'browser-disable' | 'extension'>('fetch');
-  const [useProxy, setUseProxy] = useState(false);
-  const [proxyHost, setProxyHost] = useState("127.0.0.1");
-  const [proxyPort, setProxyPort] = useState("8081");
-  const [proxyType, setProxyType] = useState<'cors-proxy' | 'burpsuite' | 'custom-cors'>('cors-proxy');
-  const [customCorsProxy, setCustomCorsProxy] = useState("https://cors-anywhere.herokuapp.com/");
   const [originalRequest, setOriginalRequest] = useState<any>(null);
   const [originalResponse, setOriginalResponse] = useState<any>(null);
   const [editableHeaders, setEditableHeaders] = useState<Record<string, string>>({});
@@ -373,84 +368,54 @@ export const CurlTester = () => {
     const startTime = Date.now();
     
     try {
+      // Clean headers to avoid triggering unnecessary CORS preflight requests
+      const cleanHeaders: Record<string, string> = {};
+      
+      // Only include headers that won't trigger preflight
+      if (request.headers) {
+        Object.entries(request.headers).forEach(([key, value]: [string, any]) => {
+          const normalizedKey = key.toLowerCase();
+          
+          // Always include these headers as they're safe for simple requests
+          if (['accept', 'accept-language', 'content-language', 'content-type'].includes(normalizedKey)) {
+            // For content-type, only certain values are safe for simple requests
+            if (normalizedKey === 'content-type') {
+              const contentType = value.toLowerCase();
+              if (['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'].some(safe => contentType.includes(safe))) {
+                cleanHeaders[key] = value;
+              } else {
+                // For other content types like application/json, we need to include them
+                // even though they trigger preflight
+                cleanHeaders[key] = value;
+              }
+            } else {
+              cleanHeaders[key] = value;
+            }
+          } else {
+            // Include all other headers (Authorization, custom headers, etc.)
+            // These will trigger preflight but that's necessary for the request to work properly
+            cleanHeaders[key] = value;
+          }
+        });
+      }
+
+      console.log(`📡 Making direct request to: ${request.url}`);
+      console.log(`🔍 Request method: ${request.method}`);
+      console.log(`📋 Request headers:`, cleanHeaders);
+
       const fetchOptions: RequestInit = {
         method: request.method,
-        headers: request.headers,
-        mode: 'cors'
+        headers: cleanHeaders,
+        mode: 'cors',
+        credentials: 'omit' // Don't send cookies to avoid unnecessary preflight complexity
       };
 
-      // Configure CORS proxy if enabled
-      let targetUrl = request.url;
-      let corsProxyUsed = false;
-      
-      if (useProxy) {
-        if (proxyType === 'cors-proxy') {
-          // Public CORS Proxy
-          targetUrl = 'https://cors-anywhere.herokuapp.com/' + request.url;
-          corsProxyUsed = true;
-          
-          console.log(`🌐 Using Public CORS Proxy`);
-          console.log(`🎯 Original URL: ${request.url}`);
-          console.log(`🔄 Proxied URL: ${targetUrl}`);
-          console.log(`📋 Headers to send:`, request.headers);
-          
-          // Ensure headers are properly passed through CORS proxy
-          fetchOptions.headers = {
-            ...request.headers,
-            ...fetchOptions.headers
-          };
-          
-        } else if (proxyType === 'custom-cors') {
-          // Custom CORS Proxy
-          const cleanProxyPrefix = customCorsProxy.endsWith('/') ? customCorsProxy : customCorsProxy + '/';
-          targetUrl = cleanProxyPrefix + request.url;
-          corsProxyUsed = true;
-          
-          console.log(`🔧 Using Custom CORS Proxy: ${cleanProxyPrefix}`);
-          console.log(`🎯 Original URL: ${request.url}`);
-          console.log(`🔄 Proxied URL: ${targetUrl}`);
-          console.log(`📋 Headers to send:`, request.headers);
-          
-          // Ensure headers are properly passed through custom CORS proxy
-          fetchOptions.headers = {
-            ...request.headers,
-            ...fetchOptions.headers
-          };
-          
-        } else if (proxyType === 'burpsuite') {
-          // Local proxy attempt - will likely fail due to CORS
-          targetUrl = `http://${proxyHost}:${proxyPort}/${request.url}`;
-          corsProxyUsed = true;
-          
-          console.log(`⚠️  Attempting Local Proxy (may fail due to CORS)`);
-          console.log(`🔧 Local Proxy: http://${proxyHost}:${proxyPort}/`);
-          console.log(`🎯 Original URL: ${request.url}`);
-          console.log(`🔄 Full Proxied URL: ${targetUrl}`);
-          console.log(`📋 Original headers being sent:`, request.headers);
-          
-          // Ensure ALL original headers are passed through the proxy
-          fetchOptions.headers = {
-            ...request.headers, // Start with original headers
-            ...fetchOptions.headers, // Add any additional headers
-            'X-Debug-Original-URL': request.url,
-            'X-Debug-Proxy-Type': 'local-burpsuite',
-            // Ensure critical headers are preserved
-            'User-Agent': request.headers['User-Agent'] || 'BurpSuite-Proxy-Client/1.0',
-            'Accept': request.headers['Accept'] || '*/*'
-          };
-          
-          console.log(`🔍 Final headers for proxy:`, fetchOptions.headers);
-        }
-      }
-      
-      console.log(`📡 Final fetch URL: ${targetUrl}`);
-      console.log(`🔍 Request headers:`, fetchOptions.headers);
-      
       if (request.body && (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH')) {
         fetchOptions.body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
+        console.log(`📦 Request body:`, fetchOptions.body);
       }
       
-      const response = await fetch(targetUrl, fetchOptions);
+      const response = await fetch(request.url, fetchOptions);
       const endTime = Date.now();
       
       let responseBody;
@@ -699,11 +664,7 @@ export const CurlTester = () => {
         url: parsed.url,
         headers: parsed.headers,
         body: parsed.body,
-        sslVerify: sslVerify,
-        useProxy: useProxy,
-        proxyHost: proxyHost,
-        proxyPort: proxyPort,
-        proxyType: proxyType
+        sslVerify: sslVerify
       };
       
       const originalResponse = await makeHttpRequest(originalRequest);
@@ -723,14 +684,10 @@ export const CurlTester = () => {
         setCurrentTest(`Testing ${testTemplate.name}...`);
         setAnalysisProgress(((i + 1) / testTemplates.length) * 95 + 5);
         
-        // Add SSL verification and proxy settings to test request
+        // Add SSL verification to test request
         const testRequestWithSettings = {
           ...testTemplate.request,
-          sslVerify: sslVerify,
-          useProxy: useProxy,
-          proxyHost: proxyHost,
-          proxyPort: proxyPort,
-          proxyType: proxyType
+          sslVerify: sslVerify
         };
         
         // Make the actual HTTP request for this test
@@ -1080,216 +1037,6 @@ export const CurlTester = () => {
               </div>
             </div>
 
-            {/* Proxy Configuration */}
-            <div className="bg-muted/20 p-4 rounded-lg border mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium flex items-center gap-2">
-                  <Globe className="w-4 h-4" />
-                  Proxy Configuration
-                </h3>
-                <Badge variant={useProxy ? 'default' : 'secondary'} className="text-xs">
-                  {useProxy ? 'Enabled' : 'Disabled'}
-                </Badge>
-              </div>
-              
-              <div className="flex items-center space-x-3 p-3 rounded-md border bg-background/50 mb-3">
-                <Checkbox
-                  id="use-proxy"
-                  checked={useProxy}
-                  onCheckedChange={(checked) => setUseProxy(!!checked)}
-                />
-                <label htmlFor="use-proxy" className="text-sm font-medium cursor-pointer flex-1">
-                  Route through Proxy Server
-                </label>
-                <Badge variant={useProxy ? 'default' : 'outline'} className="text-xs">
-                  {useProxy ? 'Active' : 'Inactive'}
-                </Badge>
-              </div>
-
-              {requestMethod === 'fetch' && useProxy && (
-                <div className="space-y-3 p-4 rounded-lg bg-muted/30 border">
-                  {/* Proxy Type Selection */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Proxy Type</label>
-                    <Select value={proxyType} onValueChange={(value: 'cors-proxy' | 'burpsuite' | 'custom-cors') => {
-                      setProxyType(value);
-                      if (value === 'cors-proxy') {
-                        setCustomCorsProxy('https://cors-anywhere.herokuapp.com/');
-                      } else if (value === 'burpsuite') {
-                        setProxyHost('127.0.0.1');
-                        setProxyPort('8080');
-                        setCustomCorsProxy('http://127.0.0.1:8080/');
-                      } else if (value === 'custom-cors') {
-                        setCustomCorsProxy('https://your-cors-proxy.com/');
-                      }
-                    }}>
-                      <SelectTrigger className="bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-background border shadow-lg z-50">
-                        <SelectItem value="cors-proxy">Public CORS Proxy</SelectItem>
-                        <SelectItem value="burpsuite">Local CORS Proxy (BurpSuite)</SelectItem>
-                        <SelectItem value="custom-cors">Custom CORS Proxy</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* CORS Proxy URL Input */}
-                  {(proxyType === 'cors-proxy' || proxyType === 'custom-cors') && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">CORS Proxy URL</label>
-                      <Input
-                        value={customCorsProxy}
-                        onChange={(e) => setCustomCorsProxy(e.target.value)}
-                        placeholder="https://cors-anywhere.herokuapp.com/"
-                        className="font-mono text-sm"
-                      />
-                    </div>
-                  )}
-
-                  {/* Local Proxy Host and Port for BurpSuite */}
-                  {proxyType === 'burpsuite' && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Proxy Host</label>
-                        <Input
-                          value={proxyHost}
-                          onChange={(e) => setProxyHost(e.target.value)}
-                          placeholder="127.0.0.1"
-                          className="font-mono text-sm"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Proxy Port</label>
-                        <Input
-                          value={proxyPort}
-                          onChange={(e) => setProxyPort(e.target.value)}
-                          placeholder="8080"
-                          className="font-mono text-sm"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Proxy Instructions */}
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs">
-                    <p className="text-blue-800 font-medium mb-1">🔧 Setup Instructions:</p>
-                    <div className="text-blue-700 space-y-1">
-                      {proxyType === 'cors-proxy' && (
-                        <>
-                          <p>1. Using public CORS proxy service</p>
-                          <p>2. Requests will be routed through the proxy automatically</p>
-                          <p>3. No additional setup required</p>
-                          <p>4. ⚠️ Note: Public proxies may have rate limits</p>
-                        </>
-                      )}
-                      {proxyType === 'burpsuite' && (
-                        <>
-                          <p>⚠️ <strong>IMPORTANT:</strong> Your local proxy must support CORS!</p>
-                          <p>1. Set up a CORS-enabled proxy server on port {proxyPort}</p>
-                          <p>2. Add these headers to your proxy:</p>
-                          <code className="block bg-gray-100 p-1 mt-1 text-xs">
-                            Access-Control-Allow-Origin: *<br/>
-                            Access-Control-Allow-Headers: *<br/>
-                            Access-Control-Allow-Methods: *
-                          </code>
-                          <p>3. Proxy format: http://{proxyHost}:{proxyPort}/[TARGET_URL]</p>
-                          <p>4. Without CORS headers, browser will block the request</p>
-                        </>
-                      )}
-                      {proxyType === 'custom-cors' && (
-                        <>
-                          <p>1. Ensure your CORS proxy server is running</p>
-                          <p>2. Configure proxy to add CORS headers</p>
-                          <p>3. Proxy should prepend URL to target URL</p>
-                          <p>4. Format: {customCorsProxy}[TARGET_URL]</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* CORS Proxy Status and Test */}
-                  <div className="space-y-2">
-                    <div className="p-3 bg-green-50 border border-green-200 rounded text-xs">
-                      <p className="text-green-800 font-medium">✅ CORS Proxy Enabled:</p>
-                      <p className="text-green-700 mt-1">
-                        {proxyType === 'cors-proxy' 
-                          ? 'Using public CORS proxy - should work immediately.'
-                          : proxyType === 'custom-cors'
-                            ? 'Using custom CORS proxy - ensure it handles CORS headers.'
-                            : `Using local proxy at http://${proxyHost}:${proxyPort}/ - must have CORS enabled.`
-                        }
-                      </p>
-                    </div>
-                    
-                    {proxyType === 'burpsuite' && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={async () => {
-                          try {
-                            // For BurpSuite, we need to test the proxy directly
-                            // This will only work if Chrome has disabled web security or BurpSuite has CORS headers
-                            const testUrl = `http://${proxyHost}:${proxyPort}`;
-                            console.log(`🔍 Testing BurpSuite proxy connection to: ${testUrl}`);
-                            console.log(`🌐 Chrome security: ${window.location.protocol === 'http:' ? 'HTTP (less restrictive)' : 'HTTPS (more restrictive)'}`);
-                            
-                            // Try a simple connection test first
-                            const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 5000);
-                            
-                            const response = await fetch(testUrl, {
-                              method: 'GET',
-                              mode: 'cors',
-                              headers: {
-                                'Accept': 'text/html,application/json',
-                                'User-Agent': 'BurpSuite-Test-Client'
-                              },
-                              signal: controller.signal
-                            });
-                            
-                            clearTimeout(timeoutId);
-                            
-                            console.log(`✅ Proxy responded with status: ${response.status}`);
-                            
-                            toast({
-                              title: "✅ Proxy Connection Successful",
-                              description: `BurpSuite proxy on port ${proxyPort} is reachable (Status: ${response.status})`,
-                              variant: "default"
-                            });
-                          } catch (error: any) {
-                            console.error('❌ Proxy test failed:', error);
-                            
-                            let errorMsg = error.message;
-                            let instructions = '';
-                            
-                            if (error.name === 'AbortError') {
-                              errorMsg = 'Connection timeout';
-                              instructions = 'Check if BurpSuite is running on the correct port.';
-                            } else if (error.message.includes('CORS')) {
-                              errorMsg = 'CORS policy blocked the connection';
-                              instructions = 'Start Chrome with: --disable-web-security --user-data-dir=/tmp/chrome_dev_test';
-                            } else if (error.message.includes('network') || error.message.includes('Failed to fetch')) {
-                              errorMsg = 'Network connection failed';
-                              instructions = 'Ensure BurpSuite proxy is running and listening on the specified port.';
-                            }
-                            
-                            toast({
-                              title: "❌ Proxy Test Failed",
-                              description: `${errorMsg}. ${instructions}`,
-                              variant: "destructive"
-                            });
-                          }
-                        }}
-                        className="w-full"
-                      >
-                        Test Proxy Connection
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
 
             <div className="bg-muted/20 p-4 rounded-lg border">
               <div className="flex items-center justify-between mb-3">
