@@ -375,11 +375,24 @@ export const CurlTester = () => {
       console.log(`📝 HEADERS:`, JSON.stringify(request.headers, null, 2));
       console.log(`📦 BODY:`, request.body);
 
+      // Ensure headers are properly formatted as key-value pairs
+      const properHeaders: Record<string, string> = {};
+      if (request.headers && typeof request.headers === 'object') {
+        Object.entries(request.headers).forEach(([key, value]) => {
+          if (key && value) {
+            properHeaders[key] = String(value);
+            console.log(`🎯 Adding header: "${key}" = "${value}"`);
+          }
+        });
+      }
+      
+      console.log(`🔥 FINAL HEADERS WITH VALUES:`, JSON.stringify(properHeaders, null, 2));
+
       const response = await fetch(request.url, {
         method: request.method,
-        headers: request.headers || {},
+        headers: properHeaders, // Send headers with proper key: value format
         body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
-        mode: 'cors' // Normal CORS behavior - OPTIONS preflight if needed, then actual request
+        mode: 'cors'
       });
       
       const endTime = Date.now();
