@@ -462,6 +462,8 @@ export const CurlTester = () => {
         title: "Test Request Completed",
         description: `Response: ${response.status} ${response.statusText} (${endTime - startTime}ms)`,
       });
+      
+      console.log(`✅ MAIN REQUEST COMPLETED (${response.status}). Note: Browser may have sent OPTIONS preflight automatically.`);
 
     } catch (error) {
       console.error(`❌ TEST REQUEST FAILED:`, error);
