@@ -1179,45 +1179,47 @@ export const CurlTester = () => {
               </div>
             </div>
             
-            <Button 
-              onClick={handleAnalyzeCurl}
-              disabled={isAnalyzing}
-              className="w-full bg-gradient-primary hover:scale-105 transition-all duration-300"
-            >
-              {isAnalyzing ? (
-                <>
-                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Analyzing Security...
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4 mr-2" />
-                  Analyze API Security
-                </>
-              )}
-            </Button>
-
-            {/* Test Your cURL Button */}
-            {parsedCurl && (
+            <div className="space-y-3">
               <Button 
-                onClick={testOriginalCurl}
-                disabled={isTestingCurl}
-                variant="outline"
-                className="w-full border-primary/50 hover:bg-primary/10"
+                onClick={handleAnalyzeCurl}
+                disabled={isAnalyzing}
+                className="w-full bg-gradient-primary hover:scale-105 transition-all duration-300"
               >
-                {isTestingCurl ? (
+                {isAnalyzing ? (
                   <>
-                    <div className="w-4 h-4 mr-2 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    Testing Your cURL...
+                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Analyzing Security...
                   </>
                 ) : (
                   <>
-                    <Globe className="w-4 h-4 mr-2" />
-                    Test Your cURL
+                    <Play className="w-4 h-4 mr-2" />
+                    Analyze API Security
                   </>
                 )}
               </Button>
-            )}
+
+              {/* Test Your cURL Button - show when there's a cURL command */}
+              {curlCommand.trim() && (
+                <Button 
+                  onClick={testOriginalCurl}
+                  disabled={isTestingCurl || !parsedCurl}
+                  variant="outline"
+                  className="w-full border-primary/50 hover:bg-primary/10"
+                >
+                  {isTestingCurl ? (
+                    <>
+                      <div className="w-4 h-4 mr-2 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      Testing Your cURL...
+                    </>
+                  ) : (
+                    <>
+                      <Globe className="w-4 h-4 mr-2" />
+                      Test Your cURL
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
 
