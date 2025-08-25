@@ -1180,25 +1180,7 @@ export const CurlTester = () => {
             </div>
             
             <div className="space-y-3">
-              <Button 
-                onClick={handleAnalyzeCurl}
-                disabled={isAnalyzing}
-                className="w-full bg-gradient-primary hover:scale-105 transition-all duration-300"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Analyzing Security...
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 mr-2" />
-                    Analyze API Security
-                  </>
-                )}
-              </Button>
-
-              {/* Test Your cURL Button - show when there's a cURL command */}
+              {/* Test Your cURL Button - show first */}
               {curlCommand.trim() && (
                 <Button 
                   onClick={testOriginalCurl}
@@ -1219,6 +1201,24 @@ export const CurlTester = () => {
                   )}
                 </Button>
               )}
+
+              <Button 
+                onClick={handleAnalyzeCurl}
+                disabled={isAnalyzing}
+                className="w-full bg-gradient-primary hover:scale-105 transition-all duration-300"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Analyzing Security...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 mr-2" />
+                    Analyze API Security
+                  </>
+                )}
+              </Button>
             </div>
           </CardContent>
         </Card>
