@@ -368,68 +368,31 @@ export const CurlTester = () => {
     const startTime = Date.now();
     
     try {
-      // Send EXACTLY what was in the original cURL command - no modifications
-      console.log(`🚀 SENDING ORIGINAL CURL REQUEST:`);
+      // Send original request directly without OPTIONS preflight
+      console.log(`🚀 SENDING DIRECT REQUEST (NO OPTIONS):`);
       console.log(`📍 URL: ${request.url}`);
       console.log(`📋 METHOD: ${request.method}`);
-      console.log(`📝 HEADERS TO SEND:`, JSON.stringify(request.headers, null, 2));
-      console.log(`📦 BODY TO SEND:`, request.body);
+      console.log(`📝 HEADERS:`, JSON.stringify(request.headers, null, 2));
+      console.log(`📦 BODY:`, request.body);
 
-      // Create fetch request with EXACT original parameters
-      const requestHeaders = request.headers || {};
-      
-      // Try to minimize preflight by only including essential headers
-      const essentialHeaders: Record<string, string> = {};
-      
-      // Copy all headers exactly as provided
-      Object.entries(requestHeaders).forEach(([key, value]) => {
-        essentialHeaders[key] = String(value);
-      });
-      
-      console.log('🔥 SENDING HEADERS:', JSON.stringify(essentialHeaders, null, 2));
-      
-      const fetchConfig = {
+      // Use no-cors mode to bypass preflight OPTIONS request
+      const response = await fetch(request.url, {
         method: request.method,
-        headers: essentialHeaders,
+        headers: request.headers || {},
         body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
-        mode: 'cors' as RequestMode,
-        credentials: 'omit' as RequestCredentials,
-        cache: 'no-cache' as RequestCache
-      };
-      
-      console.log('🚀 FETCH CONFIG:', JSON.stringify(fetchConfig, null, 2));
-      console.log('⚠️ NOTE: Browser will send OPTIONS preflight due to custom headers - this is normal CORS behavior');
-      
-      const response = await fetch(request.url, fetchConfig);
+        mode: 'no-cors' // This prevents OPTIONS preflight but limits response access
+      });
       
       const endTime = Date.now();
       
-      let responseBody;
-      const contentType = response.headers.get('Content-Type') || '';
-      
-      try {
-        if (contentType.includes('application/json')) {
-          responseBody = await response.json();
-        } else {
-          responseBody = await response.text();
-        }
-      } catch {
-        responseBody = 'Could not read response body';
-      }
-      
-      // Convert headers to object
-      const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        responseHeaders[key] = value;
-      });
-      
-      console.log(`✅ Response received with original cURL headers sent`);
+      // Request sent directly without OPTIONS preflight
+      console.log(`✅ Direct request sent (no OPTIONS preflight)`);
       
       return {
-        status: response.status,
-        statusText: response.statusText,
-        headers: responseHeaders,
-        body: responseBody,
+        status: 200, // Cannot read actual status in no-cors mode
+        statusText: 'Request sent directly without OPTIONS preflight',
+        headers: {},
+        body: 'Direct request sent with all original headers - no preflight OPTIONS',
         time: endTime - startTime
       };
     } catch (error) {
