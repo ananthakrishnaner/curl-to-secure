@@ -380,32 +380,49 @@ export const CurlTester = () => {
 
       // Configure CORS proxy if enabled
       let targetUrl = request.url;
+      let corsProxyUsed = false;
       
       if (useProxy) {
-        if (proxyType === 'cors-proxy' || proxyType === 'custom-cors') {
-          // CORS Proxy: Prepend proxy URL to target URL
-          const proxyPrefix = proxyType === 'cors-proxy' 
-            ? 'https://cors-anywhere.herokuapp.com/' 
-            : customCorsProxy;
+        if (proxyType === 'cors-proxy') {
+          // Public CORS Proxy
+          targetUrl = 'https://cors-anywhere.herokuapp.com/' + request.url;
+          corsProxyUsed = true;
           
-          // Ensure proxy URL ends with /
-          const cleanProxyPrefix = proxyPrefix.endsWith('/') ? proxyPrefix : proxyPrefix + '/';
+          console.log(`🌐 Using Public CORS Proxy`);
+          console.log(`🎯 Original URL: ${request.url}`);
+          console.log(`🔄 Proxied URL: ${targetUrl}`);
+          
+        } else if (proxyType === 'custom-cors') {
+          // Custom CORS Proxy
+          const cleanProxyPrefix = customCorsProxy.endsWith('/') ? customCorsProxy : customCorsProxy + '/';
           targetUrl = cleanProxyPrefix + request.url;
+          corsProxyUsed = true;
           
-          console.log(`🌐 Using CORS Proxy: ${cleanProxyPrefix}`);
+          console.log(`🔧 Using Custom CORS Proxy: ${cleanProxyPrefix}`);
           console.log(`🎯 Original URL: ${request.url}`);
           console.log(`🔄 Proxied URL: ${targetUrl}`);
           
         } else if (proxyType === 'burpsuite') {
-          // Local CORS proxy (assuming you've set up a CORS-enabled proxy)
-          const localCorsProxy = `http://${proxyHost}:${proxyPort}/`;
-          targetUrl = localCorsProxy + request.url;
+          // Local proxy attempt - will likely fail due to CORS
+          targetUrl = `http://${proxyHost}:${proxyPort}/${request.url}`;
+          corsProxyUsed = true;
           
-          console.log(`🔧 Using Local CORS Proxy: ${localCorsProxy}`);
+          console.log(`⚠️  Attempting Local Proxy (may fail due to CORS)`);
+          console.log(`🔧 Local Proxy: http://${proxyHost}:${proxyPort}/`);
           console.log(`🎯 Original URL: ${request.url}`);
-          console.log(`🔄 Proxied URL: ${targetUrl}`);
+          console.log(`🔄 Full Proxied URL: ${targetUrl}`);
+          
+          // Add special headers for local proxy debugging
+          fetchOptions.headers = {
+            ...fetchOptions.headers,
+            'X-Debug-Original-URL': request.url,
+            'X-Debug-Proxy-Type': 'local-burpsuite'
+          };
         }
       }
+      
+      console.log(`📡 Final fetch URL: ${targetUrl}`);
+      console.log(`🔍 Request headers:`, fetchOptions.headers);
       
       if (request.body && (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH')) {
         fetchOptions.body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
@@ -1146,10 +1163,16 @@ export const CurlTester = () => {
                       )}
                       {proxyType === 'burpsuite' && (
                         <>
-                          <p>1. Set up local CORS proxy server</p>
-                          <p>2. Configure server to handle CORS headers</p>
-                          <p>3. Ensure proxy accepts requests from browser</p>
-                          <p>4. Use CORS proxy, not direct BurpSuite proxy</p>
+                          <p>⚠️ <strong>IMPORTANT:</strong> Your local proxy must support CORS!</p>
+                          <p>1. Set up a CORS-enabled proxy server on port {proxyPort}</p>
+                          <p>2. Add these headers to your proxy:</p>
+                          <code className="block bg-gray-100 p-1 mt-1 text-xs">
+                            Access-Control-Allow-Origin: *<br/>
+                            Access-Control-Allow-Headers: *<br/>
+                            Access-Control-Allow-Methods: *
+                          </code>
+                          <p>3. Proxy format: http://{proxyHost}:{proxyPort}/[TARGET_URL]</p>
+                          <p>4. Without CORS headers, browser will block the request</p>
                         </>
                       )}
                       {proxyType === 'custom-cors' && (
@@ -1163,15 +1186,48 @@ export const CurlTester = () => {
                     </div>
                   </div>
 
-                  {/* CORS Proxy Status */}
-                  <div className="p-3 bg-green-50 border border-green-200 rounded text-xs">
-                    <p className="text-green-800 font-medium">✅ CORS Proxy Enabled:</p>
-                    <p className="text-green-700 mt-1">
-                      {proxyType === 'cors-proxy' || proxyType === 'custom-cors' 
-                        ? 'Requests will be routed through CORS proxy to bypass browser restrictions.'
-                        : 'Using local CORS proxy. Ensure your local proxy server handles CORS headers.'
-                      }
-                    </p>
+                  {/* CORS Proxy Status and Test */}
+                  <div className="space-y-2">
+                    <div className="p-3 bg-green-50 border border-green-200 rounded text-xs">
+                      <p className="text-green-800 font-medium">✅ CORS Proxy Enabled:</p>
+                      <p className="text-green-700 mt-1">
+                        {proxyType === 'cors-proxy' 
+                          ? 'Using public CORS proxy - should work immediately.'
+                          : proxyType === 'custom-cors'
+                            ? 'Using custom CORS proxy - ensure it handles CORS headers.'
+                            : `Using local proxy at http://${proxyHost}:${proxyPort}/ - must have CORS enabled.`
+                        }
+                      </p>
+                    </div>
+                    
+                    {proxyType === 'burpsuite' && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={async () => {
+                          try {
+                            const testUrl = `http://${proxyHost}:${proxyPort}/https://httpbin.org/get`;
+                            console.log(`Testing proxy: ${testUrl}`);
+                            const response = await fetch(testUrl);
+                            const data = await response.text();
+                            toast({
+                              title: "✅ Proxy Test Successful",
+                              description: `Connected to proxy on port ${proxyPort}`,
+                              variant: "default"
+                            });
+                          } catch (error: any) {
+                            toast({
+                              title: "❌ Proxy Test Failed",
+                              description: `Cannot connect to proxy on port ${proxyPort}. Error: ${error.message}`,
+                              variant: "destructive"
+                            });
+                          }
+                        }}
+                        className="w-full"
+                      >
+                        Test Proxy Connection
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
