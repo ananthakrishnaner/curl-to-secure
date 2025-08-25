@@ -413,12 +413,47 @@ export const CurlTester = () => {
         });
       }
 
-      const response = await fetch(currentParsedCurl.url, {
+      // Create request options to avoid CORS preflight when possible
+      const requestOptions: RequestInit = {
         method: currentParsedCurl.method,
-        headers: properHeaders,
         body: currentParsedCurl.body ? (typeof currentParsedCurl.body === 'string' ? currentParsedCurl.body : JSON.stringify(currentParsedCurl.body)) : undefined,
         mode: 'cors'
+      };
+
+      // Only add headers that won't trigger preflight for simple requests
+      const simpleHeaders: Record<string, string> = {};
+      const complexHeaders: Record<string, string> = {};
+      
+      // Headers that DON'T trigger preflight (for simple requests)
+      const simpleHeaderNames = ['accept', 'accept-language', 'content-language', 'content-type'];
+      const simpleContentTypes = ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'];
+      
+      Object.entries(properHeaders).forEach(([key, value]) => {
+        const lowerKey = key.toLowerCase();
+        if (simpleHeaderNames.includes(lowerKey)) {
+          if (lowerKey === 'content-type' && simpleContentTypes.some(ct => value.toLowerCase().includes(ct))) {
+            simpleHeaders[key] = value;
+          } else if (lowerKey !== 'content-type') {
+            simpleHeaders[key] = value;
+          } else {
+            complexHeaders[key] = value;
+          }
+        } else {
+          complexHeaders[key] = value;
+        }
       });
+
+      // For GET requests with no custom headers, try to avoid preflight
+      if (currentParsedCurl.method === 'GET' && Object.keys(complexHeaders).length === 0) {
+        requestOptions.headers = simpleHeaders;
+        console.log(`🚀 Sending simple GET request (no preflight): ${currentParsedCurl.url}`);
+      } else {
+        // Include all headers - this may trigger preflight
+        requestOptions.headers = properHeaders;
+        console.log(`🚀 Sending complex request (may trigger preflight): ${currentParsedCurl.url}`);
+      }
+
+      const response = await fetch(currentParsedCurl.url, requestOptions);
 
       const endTime = Date.now();
       
