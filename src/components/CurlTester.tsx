@@ -397,9 +397,10 @@ export const CurlTester = () => {
 
     try {
       console.log(`🧪 TESTING ORIGINAL CURL REQUEST:`);
+      console.log(`⚠️  IMPORTANT: Browser will send OPTIONS preflight first (without your headers) - this is normal!`);
       console.log(`📍 URL: ${currentParsedCurl.url}`);
       console.log(`📋 METHOD: ${currentParsedCurl.method}`);
-      console.log(`📝 HEADERS:`, JSON.stringify(currentParsedCurl.headers, null, 2));
+      console.log(`📝 HEADERS (sent with main request, NOT with OPTIONS):`, JSON.stringify(currentParsedCurl.headers, null, 2));
       console.log(`📦 BODY:`, currentParsedCurl.body);
 
       // Format headers properly
@@ -463,7 +464,7 @@ export const CurlTester = () => {
         description: `Response: ${response.status} ${response.statusText} (${endTime - startTime}ms)`,
       });
       
-      console.log(`✅ MAIN REQUEST COMPLETED (${response.status}). Note: Browser may have sent OPTIONS preflight automatically.`);
+      console.log(`✅ MAIN REQUEST COMPLETED (${response.status}). Your headers were sent with the main ${currentParsedCurl.method} request, NOT with the OPTIONS preflight.`);
 
     } catch (error) {
       console.error(`❌ TEST REQUEST FAILED:`, error);
