@@ -223,6 +223,65 @@ export const CurlTester = () => {
     }
   };
 
+  const submitViaForm = async (parsedCurl: ParsedCurl, startTime: number) => {
+    try {
+      console.log(`📋 Form submission method cannot capture response due to browser security restrictions`);
+      
+      toast({
+        title: "Cannot Avoid Preflight",
+        description: "This request requires custom headers/JSON that always trigger CORS preflight. The OPTIONS request is unavoidable for security.",
+        variant: "destructive"
+      });
+      
+      // Fall back to normal fetch
+      const response = await fetch(parsedCurl.url, {
+        method: parsedCurl.method,
+        headers: parsedCurl.headers,
+        body: parsedCurl.body ? (typeof parsedCurl.body === 'string' ? parsedCurl.body : JSON.stringify(parsedCurl.body)) : undefined,
+        mode: 'cors'
+      });
+
+      const endTime = Date.now();
+      
+      let responseBody;
+      const contentType = response.headers.get('Content-Type') || '';
+      
+      try {
+        if (contentType.includes('application/json')) {
+          responseBody = await response.json();
+        } else {
+          responseBody = await response.text();
+        }
+      } catch {
+        responseBody = 'Could not read response body';
+      }
+      
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+
+      return {
+        request: {
+          method: parsedCurl.method,
+          url: parsedCurl.url,
+          headers: parsedCurl.headers,
+          body: parsedCurl.body
+        },
+        response: {
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+          body: responseBody,
+          time: endTime - startTime
+        }
+      };
+    } catch (error) {
+      console.error('Request failed:', error);
+      throw error;
+    }
+  };
+
   const generateCurlFromRequest = (request: any) => {
     let curlCmd = `curl -X ${request.method}`;
     
@@ -397,10 +456,9 @@ export const CurlTester = () => {
 
     try {
       console.log(`🧪 TESTING ORIGINAL CURL REQUEST:`);
-      console.log(`⚠️  IMPORTANT: Browser will send OPTIONS preflight first (without your headers) - this is normal!`);
       console.log(`📍 URL: ${currentParsedCurl.url}`);
       console.log(`📋 METHOD: ${currentParsedCurl.method}`);
-      console.log(`📝 HEADERS (sent with main request, NOT with OPTIONS):`, JSON.stringify(currentParsedCurl.headers, null, 2));
+      console.log(`📝 HEADERS:`, JSON.stringify(currentParsedCurl.headers, null, 2));
       console.log(`📦 BODY:`, currentParsedCurl.body);
 
       // Format headers properly
@@ -411,6 +469,55 @@ export const CurlTester = () => {
             properHeaders[key] = String(value);
           }
         });
+      }
+
+      // Check if this request would trigger CORS preflight
+      const willTriggerPreflight = (method: string, headers: Record<string, string>, body: any) => {
+        // Non-simple methods always trigger preflight
+        if (!['GET', 'HEAD', 'POST'].includes(method)) {
+          return true;
+        }
+        
+        // Check for non-simple headers
+        const simpleHeaders = ['accept', 'accept-language', 'content-language', 'content-type'];
+        const hasComplexHeaders = Object.keys(headers).some(header => 
+          !simpleHeaders.includes(header.toLowerCase())
+        );
+        
+        if (hasComplexHeaders) {
+          return true;
+        }
+        
+        // Check content-type for POST requests
+        if (method === 'POST' && headers['content-type']) {
+          const contentType = headers['content-type'].toLowerCase();
+          const simpleContentTypes = [
+            'application/x-www-form-urlencoded',
+            'multipart/form-data', 
+            'text/plain'
+          ];
+          if (!simpleContentTypes.some(ct => contentType.includes(ct))) {
+            return true;
+          }
+        }
+        
+        return false;
+      };
+
+      const preflightRequired = willTriggerPreflight(currentParsedCurl.method, properHeaders, currentParsedCurl.body);
+      
+      if (preflightRequired) {
+        console.log(`⚠️ This request requires CORS preflight due to:`, {
+          method: currentParsedCurl.method,
+          complexHeaders: Object.keys(properHeaders).filter(h => 
+            !['accept', 'accept-language', 'content-language', 'content-type'].includes(h.toLowerCase())
+          ),
+          contentType: properHeaders['content-type']
+        });
+        
+        console.log(`📋 UNAVOIDABLE: Browsers automatically send OPTIONS preflight for API security. Your actual request will follow.`);
+      } else {
+        console.log(`✅ Simple request - no preflight required`);
       }
 
       // Create request options to avoid CORS preflight when possible
