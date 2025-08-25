@@ -381,21 +381,40 @@ export const CurlTester = () => {
       
       const response = await fetch(request.url, {
         method: request.method,
-        headers: requestHeaders, // Use the exact headers from request
+        headers: requestHeaders, // Send ALL original cURL headers
         body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
-        mode: 'no-cors'
+        mode: 'cors', // Changed back to cors to allow all headers
+        credentials: 'omit'
       });
       
       const endTime = Date.now();
       
-      // Request sent successfully in no-cors mode
-      console.log(`✅ Original cURL request sent successfully`);
+      let responseBody;
+      const contentType = response.headers.get('Content-Type') || '';
+      
+      try {
+        if (contentType.includes('application/json')) {
+          responseBody = await response.json();
+        } else {
+          responseBody = await response.text();
+        }
+      } catch {
+        responseBody = 'Could not read response body';
+      }
+      
+      // Convert headers to object
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      
+      console.log(`✅ Response received with original cURL headers sent`);
       
       return {
-        status: 200, // Cannot read actual status in no-cors mode
-        statusText: 'Original cURL request sent successfully',
-        headers: {}, // Headers not accessible in no-cors mode
-        body: 'Request sent exactly as provided in cURL command',
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        body: responseBody,
         time: endTime - startTime
       };
     } catch (error) {
