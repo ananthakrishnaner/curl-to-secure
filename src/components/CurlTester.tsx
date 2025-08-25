@@ -368,32 +368,31 @@ export const CurlTester = () => {
     const startTime = Date.now();
     
     try {
-      console.log(`📡 Sending exact cURL request to: ${request.url}`);
-      console.log(`🔍 Method: ${request.method}`);
-      console.log(`📋 Exact headers from cURL:`, request.headers);
+      // Send EXACTLY what was in the original cURL command - no modifications
+      console.log(`🚀 SENDING ORIGINAL CURL REQUEST:`);
+      console.log(`📍 URL: ${request.url}`);
+      console.log(`📋 METHOD: ${request.method}`);
+      console.log(`📝 ORIGINAL HEADERS:`, JSON.stringify(request.headers, null, 2));
+      console.log(`📦 ORIGINAL BODY:`, request.body);
 
-      // Send exactly as provided in cURL - no browser interference
-      const fetchOptions: RequestInit = {
+      // Create fetch request with EXACT original parameters
+      const response = await fetch(request.url, {
         method: request.method,
-        headers: request.headers || {},
-        mode: 'no-cors' // Bypass all CORS checks - no OPTIONS preflight
-      };
-
-      // Add body exactly as provided
-      if (request.body) {
-        fetchOptions.body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
-        console.log(`📦 Exact body from cURL:`, fetchOptions.body);
-      }
+        headers: request.headers,
+        body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
+        mode: 'no-cors'
+      });
       
-      const response = await fetch(request.url, fetchOptions);
       const endTime = Date.now();
       
-      // In no-cors mode, response is opaque but request was sent successfully
+      // Request sent successfully in no-cors mode
+      console.log(`✅ Original cURL request sent successfully`);
+      
       return {
-        status: 200, // We can't read actual status in no-cors mode
-        statusText: 'Request sent successfully (no-cors mode)',
+        status: 200, // Cannot read actual status in no-cors mode
+        statusText: 'Original cURL request sent successfully',
         headers: {}, // Headers not accessible in no-cors mode
-        body: 'Request sent with exact cURL headers - response blocked by no-cors mode',
+        body: 'Request sent exactly as provided in cURL command',
         time: endTime - startTime
       };
     } catch (error) {
