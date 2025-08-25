@@ -364,12 +364,48 @@ export const CurlTester = () => {
     setTimeout(() => updateCurlFromHeaders(), 300);
   };
 
+  const sendTestRequest = async (request: any): Promise<any> => {
+    console.log(`🧪 SENDING TEST REQUEST (Original):`);
+    console.log(`📍 URL: ${request.url}`);
+    console.log(`📋 METHOD: ${request.method}`);
+    console.log(`📝 HEADERS:`, JSON.stringify(request.headers, null, 2));
+    console.log(`📦 BODY:`, request.body);
+
+    const properHeaders: Record<string, string> = {};
+    if (request.headers && typeof request.headers === 'object') {
+      Object.entries(request.headers).forEach(([key, value]) => {
+        if (key && value) {
+          properHeaders[key] = String(value);
+        }
+      });
+    }
+
+    try {
+      const testResponse = await fetch(request.url, {
+        method: request.method,
+        headers: properHeaders,
+        body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
+        mode: 'cors'
+      });
+      
+      console.log(`✅ TEST REQUEST SUCCESS - Status: ${testResponse.status}`);
+      return testResponse;
+    } catch (error) {
+      console.log(`❌ TEST REQUEST FAILED:`, error);
+      throw error;
+    }
+  };
+
   const makeHttpRequest = async (request: any): Promise<any> => {
     const startTime = Date.now();
     
     try {
-      // Send request exactly as provided in cURL command
-      console.log(`🚀 SENDING REQUEST AS PROVIDED:`);
+      // First send the test request (original request)
+      console.log(`🧪 Step 1: Sending test request...`);
+      await sendTestRequest(request);
+      
+      // Then send the actual request
+      console.log(`🚀 Step 2: SENDING ACTUAL REQUEST:`);
       console.log(`📍 URL: ${request.url}`);
       console.log(`📋 METHOD: ${request.method}`);
       console.log(`📝 HEADERS:`, JSON.stringify(request.headers, null, 2));
