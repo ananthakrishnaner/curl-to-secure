@@ -1207,19 +1207,55 @@ export const CurlTester = () => {
                         size="sm" 
                         onClick={async () => {
                           try {
-                            const testUrl = `http://${proxyHost}:${proxyPort}/https://httpbin.org/get`;
-                            console.log(`Testing proxy: ${testUrl}`);
-                            const response = await fetch(testUrl);
-                            const data = await response.text();
+                            // For BurpSuite, we need to test the proxy directly
+                            // This will only work if Chrome has disabled web security or BurpSuite has CORS headers
+                            const testUrl = `http://${proxyHost}:${proxyPort}`;
+                            console.log(`🔍 Testing BurpSuite proxy connection to: ${testUrl}`);
+                            console.log(`🌐 Chrome security: ${window.location.protocol === 'http:' ? 'HTTP (less restrictive)' : 'HTTPS (more restrictive)'}`);
+                            
+                            // Try a simple connection test first
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 5000);
+                            
+                            const response = await fetch(testUrl, {
+                              method: 'GET',
+                              mode: 'cors',
+                              headers: {
+                                'Accept': 'text/html,application/json',
+                                'User-Agent': 'BurpSuite-Test-Client'
+                              },
+                              signal: controller.signal
+                            });
+                            
+                            clearTimeout(timeoutId);
+                            
+                            console.log(`✅ Proxy responded with status: ${response.status}`);
+                            
                             toast({
-                              title: "✅ Proxy Test Successful",
-                              description: `Connected to proxy on port ${proxyPort}`,
+                              title: "✅ Proxy Connection Successful",
+                              description: `BurpSuite proxy on port ${proxyPort} is reachable (Status: ${response.status})`,
                               variant: "default"
                             });
                           } catch (error: any) {
+                            console.error('❌ Proxy test failed:', error);
+                            
+                            let errorMsg = error.message;
+                            let instructions = '';
+                            
+                            if (error.name === 'AbortError') {
+                              errorMsg = 'Connection timeout';
+                              instructions = 'Check if BurpSuite is running on the correct port.';
+                            } else if (error.message.includes('CORS')) {
+                              errorMsg = 'CORS policy blocked the connection';
+                              instructions = 'Start Chrome with: --disable-web-security --user-data-dir=/tmp/chrome_dev_test';
+                            } else if (error.message.includes('network') || error.message.includes('Failed to fetch')) {
+                              errorMsg = 'Network connection failed';
+                              instructions = 'Ensure BurpSuite proxy is running and listening on the specified port.';
+                            }
+                            
                             toast({
                               title: "❌ Proxy Test Failed",
-                              description: `Cannot connect to proxy on port ${proxyPort}. Error: ${error.message}`,
+                              description: `${errorMsg}. ${instructions}`,
                               variant: "destructive"
                             });
                           }
