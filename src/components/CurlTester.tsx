@@ -408,11 +408,83 @@ export const CurlTester = () => {
       };
     } catch (error) {
       const endTime = Date.now();
+      
+      // Enhanced error reporting with detailed network error information
+      let errorMessage = 'Unknown network error';
+      let errorType = 'NETWORK_ERROR';
+      let technicalDetails = '';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // Detect specific error types
+        if (error.message.includes('Failed to fetch')) {
+          errorType = 'FETCH_FAILED';
+          technicalDetails = 'This usually indicates one of the following:\n' +
+            '• CORS policy blocking the request\n' +
+            '• SSL/TLS certificate issues\n' +
+            '• Network connectivity problems\n' +
+            '• Server not responding\n' +
+            '• Invalid URL or unreachable host';
+        } else if (error.message.includes('certificate') || error.message.includes('SSL') || error.message.includes('TLS')) {
+          errorType = 'SSL_ERROR';
+          technicalDetails = 'SSL/TLS Certificate Error:\n' +
+            '• The server\'s SSL certificate may be invalid, expired, or self-signed\n' +
+            '• Certificate chain issues\n' +
+            '• SSL protocol mismatch\n' +
+            '• Try with a different SSL configuration';
+        } else if (error.message.includes('CORS')) {
+          errorType = 'CORS_ERROR';
+          technicalDetails = 'Cross-Origin Request Blocked:\n' +
+            '• The server doesn\'t allow requests from this origin\n' +
+            '• Missing or incorrect CORS headers on the server\n' +
+            '• Preflight request failed';
+        } else if (error.message.includes('timeout') || error.message.includes('aborted')) {
+          errorType = 'TIMEOUT_ERROR';
+          technicalDetails = 'Request Timeout:\n' +
+            '• Server took too long to respond\n' +
+            '• Network connection is slow or unstable\n' +
+            '• Server may be overloaded';
+        } else if (error.message.includes('ERR_NAME_NOT_RESOLVED') || error.message.includes('getaddrinfo')) {
+          errorType = 'DNS_ERROR';
+          technicalDetails = 'DNS Resolution Failed:\n' +
+            '• Domain name cannot be resolved\n' +
+            '• DNS server issues\n' +
+            '• Check if the URL is correct';
+        }
+      }
+      
+      // Log detailed error information for debugging
+      console.error('🚨 Network Request Failed:', {
+        url: request.url,
+        method: request.method,
+        errorType,
+        errorMessage,
+        originalError: error,
+        technicalDetails,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Show detailed error toast
+      toast({
+        title: `${errorType}: Request Failed`,
+        description: `${errorMessage}\n\nURL: ${request.url}\n\n${technicalDetails}`,
+        variant: "destructive",
+        duration: 10000, // Show longer for detailed errors
+      });
+      
       return {
         status: 0,
-        statusText: 'Network Error',
+        statusText: `${errorType}: ${errorMessage}`,
         headers: {},
-        body: { error: error instanceof Error ? error.message : 'Unknown error' },
+        body: { 
+          error: errorMessage,
+          errorType,
+          technicalDetails,
+          url: request.url,
+          method: request.method,
+          timestamp: new Date().toISOString()
+        },
         time: endTime - startTime
       };
     }
