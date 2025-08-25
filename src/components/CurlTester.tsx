@@ -375,27 +375,30 @@ export const CurlTester = () => {
       console.log(`📝 HEADERS TO SEND:`, JSON.stringify(request.headers, null, 2));
       console.log(`📦 BODY TO SEND:`, request.body);
 
-      // Create fetch request with EXACT original parameters - force headers to be sent
+      // Create fetch request with EXACT original parameters
       const requestHeaders = request.headers || {};
-      console.log('🔥 FINAL HEADERS FOR FETCH:', JSON.stringify(requestHeaders, null, 2));
-      console.log('🔥 TYPEOF HEADERS:', typeof requestHeaders);
-      console.log('🔥 HEADERS KEYS:', Object.keys(requestHeaders));
-      console.log('🔥 HEADERS VALUES:', Object.values(requestHeaders));
       
-      // Log each header individually
+      // Try to minimize preflight by only including essential headers
+      const essentialHeaders: Record<string, string> = {};
+      
+      // Copy all headers exactly as provided
       Object.entries(requestHeaders).forEach(([key, value]) => {
-        console.log(`🎯 Header: "${key}" = "${value}"`);
+        essentialHeaders[key] = String(value);
       });
+      
+      console.log('🔥 SENDING HEADERS:', JSON.stringify(essentialHeaders, null, 2));
       
       const fetchConfig = {
         method: request.method,
-        headers: requestHeaders, // Send ALL original cURL headers
+        headers: essentialHeaders,
         body: request.body ? (typeof request.body === 'string' ? request.body : JSON.stringify(request.body)) : undefined,
-        mode: 'cors' as RequestMode, // Allow all headers
-        credentials: 'omit' as RequestCredentials
+        mode: 'cors' as RequestMode,
+        credentials: 'omit' as RequestCredentials,
+        cache: 'no-cache' as RequestCache
       };
       
-      console.log('🚀 FINAL FETCH CONFIG:', JSON.stringify(fetchConfig, null, 2));
+      console.log('🚀 FETCH CONFIG:', JSON.stringify(fetchConfig, null, 2));
+      console.log('⚠️ NOTE: Browser will send OPTIONS preflight due to custom headers - this is normal CORS behavior');
       
       const response = await fetch(request.url, fetchConfig);
       
